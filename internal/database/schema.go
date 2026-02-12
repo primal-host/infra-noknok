@@ -39,4 +39,18 @@ CREATE TABLE IF NOT EXISTS grants (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(user_id, service_id)
 );
+
+CREATE TABLE IF NOT EXISTS oauth_requests (
+    state      TEXT PRIMARY KEY,
+    data       JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS oauth_sessions (
+    did        TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    data       JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (did, session_id)
+);
 `
