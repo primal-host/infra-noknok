@@ -28,6 +28,11 @@ func (s *Server) handleLogin(c echo.Context) error {
 		return c.HTML(http.StatusOK, loginHTML(redirect, "Handle is required."))
 	}
 
+	// Default bare names to .bsky.social.
+	if !strings.Contains(handle, ".") {
+		handle += ".bsky.social"
+	}
+
 	// Store redirect URL in a cookie so we can use it after the OAuth callback.
 	if redirect != "" && isAllowedRedirect(redirect, s.cfg) {
 		secure := strings.HasPrefix(s.cfg.PublicURL, "https://")
