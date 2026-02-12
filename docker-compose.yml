@@ -13,11 +13,11 @@ services:
     labels:
       - "traefik.enable=true"
       # Production (HTTPS)
-      - "traefik.http.routers.noknok.rule=Host(`noknok.primal.host`)"
+      - "traefik.http.routers.noknok.rule=Host(`primal.host`) || Host(`noknok.primal.host`)"
       - "traefik.http.routers.noknok.entrypoints=https"
       - "traefik.http.routers.noknok.tls.certresolver=letsencrypt"
       # Production HTTP->HTTPS redirect
-      - "traefik.http.routers.noknok-redirect.rule=Host(`noknok.primal.host`)"
+      - "traefik.http.routers.noknok-redirect.rule=Host(`primal.host`) || Host(`noknok.primal.host`)"
       - "traefik.http.routers.noknok-redirect.entrypoints=http"
       - "traefik.http.routers.noknok-redirect.middlewares=https-redirect"
       # Local (HTTP)
