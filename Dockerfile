@@ -1,4 +1,4 @@
-FROM infra-eridu:latest AS build
+FROM eridu:latest AS build
 WORKDIR /src
 ENV GOPROXY=http://host.docker.internal:3000|direct
 COPY go.mod go.sum ./
