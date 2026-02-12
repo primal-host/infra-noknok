@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 // Config holds all runtime configuration loaded from environment variables.
 type Config struct {
@@ -19,8 +19,8 @@ type Config struct {
 	DBSSLMode  string
 	ListenAddr string
 
-	SessionSecret string
-	SessionTTL    string // duration string, e.g. "24h"
+	OAuthPrivateKey string // multibase-encoded ES256 private key
+	SessionTTL      string // duration string, e.g. "24h"
 	OwnerDID      string
 	CookieDomain  string
 	PublicURL      string
@@ -48,18 +48,18 @@ func Load() (*Config, error) {
 	}
 	c.DBPassword = pw
 
-	secret, err := envOrFile("SESSION_SECRET")
+	oauthKey, err := envOrFile("OAUTH_KEY")
 	if err != nil {
-		return nil, fmt.Errorf("SESSION_SECRET: %w", err)
+		return nil, fmt.Errorf("OAUTH_KEY: %w", err)
 	}
-	c.SessionSecret = secret
+	c.OAuthPrivateKey = oauthKey
 
 	if c.OwnerDID == "" {
 		return nil, fmt.Errorf("OWNER_DID is required")
 	}
 
-	if c.SessionSecret == "" {
-		return nil, fmt.Errorf("SESSION_SECRET is required")
+	if c.OAuthPrivateKey == "" {
+		return nil, fmt.Errorf("OAUTH_KEY is required")
 	}
 
 	return c, nil
