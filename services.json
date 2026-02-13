@@ -30,5 +30,13 @@
     "url": "https://avalauncher.primal.host",
     "icon_url": "",
     "admin_role": "admin"
+  },
+  {
+    "slug": "wallet",
+    "name": "Wallet",
+    "description": "Crypto wallet dashboard",
+    "url": "https://wallet.primal.host",
+    "icon_url": "",
+    "admin_role": "admin"
   }
 ]
