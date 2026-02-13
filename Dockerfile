@@ -9,4 +9,6 @@ RUN CGO_ENABLED=0 go build -o /noknok ./cmd/noknok
 FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=build /noknok /usr/local/bin/noknok
+COPY --from=build /src/services.json /services.json
+WORKDIR /
 ENTRYPOINT ["noknok"]
