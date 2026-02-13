@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/bluesky-social/indigo/atproto/atcrypto"
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
+	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
 // OAuthClient wraps the indigo OAuth ClientApp for AT Protocol login.
@@ -71,4 +73,21 @@ func (c *OAuthClient) ClientMetadata() oauth.ClientMetadata {
 // PublicJWKS returns the public key set for client assertion verification.
 func (c *OAuthClient) PublicJWKS() oauth.JWKS {
 	return c.cfg.PublicJWKS()
+}
+
+// ResolveHandle resolves a handle to a DID and canonical handle.
+// Bare names (no dot) default to .bsky.social.
+func (c *OAuthClient) ResolveHandle(ctx context.Context, handle string) (string, string, error) {
+	if !strings.Contains(handle, ".") {
+		handle += ".bsky.social"
+	}
+	hdl, err := syntax.ParseHandle(handle)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid handle: %w", err)
+	}
+	ident, err := c.app.Dir.LookupHandle(ctx, hdl)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve handle %s: %w", handle, err)
+	}
+	return ident.DID.String(), ident.Handle.String(), nil
 }
