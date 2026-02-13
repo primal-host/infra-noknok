@@ -53,7 +53,7 @@ func portalHTML(handle string, svcs []database.Service, isAdmin bool, role strin
 			initial = string([]rune(svc.Name)[0])
 		}
 		cards += `
-      <a href="` + svc.URL + `" class="card">
+      <a href="` + svc.URL + `" target="_blank" rel="noopener" class="card">
         <div class="icon">` + initial + `</div>
         <div class="info">
           <h3>` + svc.Name + `</h3>
