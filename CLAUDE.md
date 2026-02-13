@@ -37,17 +37,31 @@ Postgres on `infra-postgres:5432` (host port 5433), database `noknok`, user `dba
 Tables: `sessions`, `users`, `services`, `grants`, `oauth_requests`, `oauth_sessions`.
 
 - `users` — role column: `owner`, `admin`, `user`
-- `services` — seeded from `services.json` on startup (ON CONFLICT DO NOTHING)
-- `grants` — user×service access matrix (CASCADE on delete)
+- `services` — seeded from `services.json` on startup (ON CONFLICT slug DO UPDATE admin_role); `admin_role` column (default 'admin') sets role for owners/admins
+- `grants` — user×service access matrix (CASCADE on delete); `role` column (free-text, default 'user') for per-service role granularity
 
 ## Docker
 
 - Image/container: `primal-noknok`
 - Network: `infra` (postgres/traefik)
 - Port: 4321
-- Traefik: `noknok.primal.host` / `noknok.localhost`
+- Traefik: `primal.host` (production), `noknok.localhost` (local)
 - DNS: `192.168.147.53` (infra CoreDNS)
+- Redirect: `noknok.primal.host` → `primal.host` (permanent)
 - Defines `noknok-auth` forwardAuth middleware for other services
+
+### Protected Services
+
+All `primal.host` infrastructure services use `noknok-auth@docker` middleware:
+
+- Traefik (`traefik.primal.host`)
+- Gitea (`gitea.primal.host`)
+- Athens (`athens.primal.host`)
+- Avalauncher (`avalauncher.primal.host`)
+- Wallet (`wallet.primal.host`)
+- pgAdmin (`pgadmin.primal.host`)
+- Verdaccio (`verdaccio.primal.host`)
+- devpi (`devpi.primal.host`)
 
 ## Auth Flow (AT Protocol OAuth)
 
@@ -60,7 +74,23 @@ Tables: `sessions`, `users`, `services`, `grants`, `oauth_requests`, `oauth_sess
 7. Auth server redirects to `/oauth/callback?code=...&state=...&iss=...`
 8. noknok calls indigo ProcessCallback → gets DID
 9. DID verified against users table → noknok session created → cookie set
-10. Redirect back to original service → forwardAuth passes with X-User-DID header
+10. Redirect back to original service → forwardAuth passes with X-User-DID, X-User-Handle, X-User-Role headers
+
+### ForwardAuth Response Headers
+
+| Header | Description |
+|--------|-------------|
+| `X-User-DID` | User's AT Protocol DID |
+| `X-User-Handle` | User's Bluesky handle |
+| `X-User-Role` | Per-service role (from grants table or service admin_role for owners/admins) |
+
+### Non-Browser Client Handling
+
+The `/auth` endpoint detects client type via the `Accept` header:
+
+- **Browser** (Accept contains `text/html`): 302 redirect to login page
+- **Non-browser** (git, curl, API clients): 401 so credential helpers can retry
+- **Authorization header present**: 200 passthrough (lets backend validate tokens/PATs)
 
 ### OAuth Endpoints
 
@@ -84,6 +114,16 @@ Accessible by clicking the username in the portal header (owner/admin only).
 | Manage services | Yes | Yes | No |
 | Manage grants | Yes | Yes | No |
 
+### Per-Service Roles
+
+Roles are resolved per-service via the `X-User-Role` header:
+
+- **Owner/Admin** in noknok → gets the service's `admin_role` value (e.g., "admin")
+- **Regular user** with a grant → gets the grant's `role` value (free-text, e.g., "user", "viewer", "editor")
+- **No grant** → no `X-User-Role` header set
+
+Backend services can use `X-User-Role` for authorization (e.g., Avalauncher checks for "admin" role).
+
 ### Admin API Endpoints
 
 All under `/admin/api`, protected by `requireAdmin` middleware:
@@ -96,8 +136,8 @@ All under `/admin/api`, protected by `requireAdmin` middleware:
 | DELETE | /users/:id | Delete user |
 | GET | /services | List all services |
 | POST | /services | Create service |
-| PUT | /services/:id | Update service |
+| PUT | /services/:id | Update service (name, url, admin_role) |
 | DELETE | /services/:id | Delete service |
 | GET | /grants | List all grants |
-| POST | /grants | Create grant |
+| POST | /grants | Create/update grant (user_id, service_id, role) |
 | DELETE | /grants/:id | Delete grant |
