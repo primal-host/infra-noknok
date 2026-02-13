@@ -28,17 +28,21 @@ CREATE TABLE IF NOT EXISTS services (
     description TEXT NOT NULL DEFAULT '',
     url         TEXT NOT NULL,
     icon_url    TEXT NOT NULL DEFAULT '',
+    admin_role  TEXT NOT NULL DEFAULT 'admin',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE services ADD COLUMN IF NOT EXISTS admin_role TEXT NOT NULL DEFAULT 'admin';
 
 CREATE TABLE IF NOT EXISTS grants (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     service_id BIGINT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL DEFAULT 'user',
     granted_by BIGINT REFERENCES users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(user_id, service_id)
 );
+ALTER TABLE grants ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
 
 CREATE TABLE IF NOT EXISTS oauth_requests (
     state      TEXT PRIMARY KEY,

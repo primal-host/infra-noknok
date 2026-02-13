@@ -26,6 +26,15 @@ func (s *Server) handleAuth(c echo.Context) error {
 		if err == nil {
 			c.Response().Header().Set("X-User-DID", sess.DID)
 			c.Response().Header().Set("X-User-Handle", sess.Handle)
+
+			// Resolve per-service role from the forwarded host.
+			host := c.Request().Header.Get("X-Forwarded-Host")
+			if host != "" {
+				if role, err := s.db.GetUserServiceRole(c.Request().Context(), sess.DID, host); err == nil && role != "" {
+					c.Response().Header().Set("X-User-Role", role)
+				}
+			}
+
 			return c.NoContent(http.StatusOK)
 		}
 	}

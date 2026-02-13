@@ -65,17 +65,21 @@ func (db *DB) SeedServices(ctx context.Context, path string) error {
 		Description string `json:"description"`
 		URL         string `json:"url"`
 		IconURL     string `json:"icon_url"`
+		AdminRole   string `json:"admin_role"`
 	}
 	if err := json.Unmarshal(data, &svcs); err != nil {
 		return fmt.Errorf("parse %s: %w", path, err)
 	}
 
 	for _, s := range svcs {
+		if s.AdminRole == "" {
+			s.AdminRole = "admin"
+		}
 		_, err := db.Pool.Exec(ctx, `
-			INSERT INTO services (slug, name, description, url, icon_url)
-			VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (slug) DO NOTHING`,
-			s.Slug, s.Name, s.Description, s.URL, s.IconURL)
+			INSERT INTO services (slug, name, description, url, icon_url, admin_role)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (slug) DO UPDATE SET admin_role = EXCLUDED.admin_role`,
+			s.Slug, s.Name, s.Description, s.URL, s.IconURL, s.AdminRole)
 		if err != nil {
 			return fmt.Errorf("seed service %s: %w", s.Slug, err)
 		}

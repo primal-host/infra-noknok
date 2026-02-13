@@ -176,17 +176,19 @@ async function deleteUser(id) {
 }
 
 function renderServices(el) {
-  let html = '<table class="admin-tbl"><thead><tr><th>Name</th><th>Slug</th><th>URL</th><th></th></tr></thead><tbody>';
+  let html = '<table class="admin-tbl"><thead><tr><th>Name</th><th>Slug</th><th>URL</th><th>Admin Role</th><th></th></tr></thead><tbody>';
   for (const s of adminData.services) {
     html += '<tr><td>' + esc(s.name) + '</td><td style="color:#64748b">' + esc(s.slug) + '</td><td style="font-size:0.75rem;color:#64748b">' + esc(s.url) + '</td>' +
+      '<td><input class="admin-input" style="width:70px;font-size:0.75rem" value="' + esc(s.admin_role) + '" onchange="updateServiceAdminRole(' + s.id + ',this.value)"></td>' +
       '<td><button class="admin-btn-danger" onclick="deleteService(' + s.id + ')">Delete</button></td></tr>';
   }
   html += '</tbody></table>';
   html += '<div class="admin-form">' +
-    '<input class="admin-input" id="svc-name" placeholder="Name" style="width:120px">' +
-    '<input class="admin-input" id="svc-slug" placeholder="slug" style="width:100px">' +
-    '<input class="admin-input" id="svc-url" placeholder="https://..." style="flex:1;min-width:150px">' +
-    '<input class="admin-input" id="svc-desc" placeholder="Description" style="width:140px">' +
+    '<input class="admin-input" id="svc-name" placeholder="Name" style="width:100px">' +
+    '<input class="admin-input" id="svc-slug" placeholder="slug" style="width:80px">' +
+    '<input class="admin-input" id="svc-url" placeholder="https://..." style="flex:1;min-width:130px">' +
+    '<input class="admin-input" id="svc-desc" placeholder="Description" style="width:110px">' +
+    '<input class="admin-input" id="svc-admin-role" placeholder="admin" style="width:70px">' +
     '<button class="admin-btn" onclick="addService()">Add</button></div>';
   html += '<div id="services-msg"></div>';
   el.innerHTML = html;
@@ -197,16 +199,32 @@ async function addService() {
   const slug = document.getElementById('svc-slug').value.trim();
   const url = document.getElementById('svc-url').value.trim();
   const desc = document.getElementById('svc-desc').value.trim();
+  const adminRole = document.getElementById('svc-admin-role').value.trim() || 'admin';
   const msg = document.getElementById('services-msg');
   if (!name || !slug || !url) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = 'Name, slug, and URL required'; return; }
   try {
-    await api('POST', '/services', { name, slug, url, description: desc, icon_url: '' });
+    await api('POST', '/services', { name, slug, url, description: desc, icon_url: '', admin_role: adminRole });
     document.getElementById('svc-name').value = '';
     document.getElementById('svc-slug').value = '';
     document.getElementById('svc-url').value = '';
     document.getElementById('svc-desc').value = '';
+    document.getElementById('svc-admin-role').value = '';
     msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Service added';
     loadTab('services');
+  } catch (e) {
+    msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
+  }
+}
+
+async function updateServiceAdminRole(id, adminRole) {
+  const svc = adminData.services.find(s => s.id === id);
+  if (!svc) return;
+  const msg = document.getElementById('services-msg');
+  try {
+    await api('PUT', '/services/' + id, { name: svc.name, description: svc.description, url: svc.url, icon_url: svc.icon_url, admin_role: adminRole });
+    svc.admin_role = adminRole;
+    msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Admin role updated';
+    setTimeout(() => { msg.className = ''; msg.textContent = ''; }, 1500);
   } catch (e) {
     msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
   }
@@ -223,9 +241,9 @@ async function deleteService(id) {
 function renderAccess(el) {
   const users = adminData.users;
   const services = adminData.services;
-  const grantSet = {};
+  const grantMap = {};
   for (const g of adminData.grants) {
-    grantSet[g.user_id + ':' + g.service_id] = g.id;
+    grantMap[g.user_id + ':' + g.service_id] = g;
   }
 
   let html = '<table class="admin-tbl"><thead><tr><th>User</th>';
@@ -237,9 +255,16 @@ function renderAccess(el) {
     html += '<tr><td>' + esc(u.handle || u.did) + '</td>';
     for (const s of services) {
       const key = u.id + ':' + s.id;
-      const checked = key in grantSet ? ' checked' : '';
-      html += '<td style="text-align:center"><input type="checkbox" class="access-check"' + checked +
-        ' onchange="toggleGrant(' + u.id + ',' + s.id + ',this.checked)"></td>';
+      const grant = grantMap[key];
+      const checked = grant ? ' checked' : '';
+      const role = grant ? grant.role : 'user';
+      html += '<td style="text-align:center">' +
+        '<input type="checkbox" class="access-check"' + checked +
+        ' onchange="toggleGrant(' + u.id + ',' + s.id + ',this.checked)">' +
+        '<br><input class="admin-input" style="width:60px;font-size:0.6875rem;margin-top:2px;text-align:center" ' +
+        'value="' + esc(role) + '" ' +
+        'onchange="updateGrantRole(' + u.id + ',' + s.id + ',this.value)"' +
+        (grant ? '' : ' disabled') + '></td>';
     }
     html += '</tr>';
   }
@@ -252,24 +277,32 @@ async function toggleGrant(userId, serviceId, checked) {
   const msg = document.getElementById('access-msg');
   try {
     if (checked) {
-      await api('POST', '/grants', { user_id: userId, service_id: serviceId });
+      await api('POST', '/grants', { user_id: userId, service_id: serviceId, role: 'user' });
     } else {
-      // Find grant ID and delete it.
       const key = userId + ':' + serviceId;
-      let grantId = null;
-      for (const g of adminData.grants) {
-        if (g.user_id === userId && g.service_id === serviceId) { grantId = g.id; break; }
-      }
-      if (grantId) {
-        await api('DELETE', '/grants/' + grantId);
+      const grant = adminData.grants.find(g => g.user_id === userId && g.service_id === serviceId);
+      if (grant) {
+        await api('DELETE', '/grants/' + grant.id);
       }
     }
-    // Reload grants data.
     adminData.grants = await api('GET', '/grants');
+    renderAccess(document.getElementById('admin-content'));
     msg.className = ''; msg.textContent = '';
   } catch (e) {
     msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
     loadTab('access');
+  }
+}
+
+async function updateGrantRole(userId, serviceId, role) {
+  const msg = document.getElementById('access-msg');
+  try {
+    await api('POST', '/grants', { user_id: userId, service_id: serviceId, role: role });
+    adminData.grants = await api('GET', '/grants');
+    msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Role updated';
+    setTimeout(() => { msg.className = ''; msg.textContent = ''; }, 1500);
+  } catch (e) {
+    msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
   }
 }
 </script>`

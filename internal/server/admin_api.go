@@ -197,6 +197,7 @@ func (s *Server) handleCreateService(c echo.Context) error {
 		Description string `json:"description"`
 		URL         string `json:"url"`
 		IconURL     string `json:"icon_url"`
+		AdminRole   string `json:"admin_role"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -205,7 +206,7 @@ func (s *Server) handleCreateService(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "slug, name, and url are required"})
 	}
 
-	svc, err := s.db.CreateService(c.Request().Context(), req.Slug, req.Name, req.Description, req.URL, req.IconURL)
+	svc, err := s.db.CreateService(c.Request().Context(), req.Slug, req.Name, req.Description, req.URL, req.IconURL, req.AdminRole)
 	if err != nil {
 		return c.JSON(http.StatusConflict, map[string]string{"error": "service slug already exists"})
 	}
@@ -227,6 +228,7 @@ func (s *Server) handleUpdateService(c echo.Context) error {
 		Description string `json:"description"`
 		URL         string `json:"url"`
 		IconURL     string `json:"icon_url"`
+		AdminRole   string `json:"admin_role"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -235,7 +237,7 @@ func (s *Server) handleUpdateService(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name and url are required"})
 	}
 
-	if err := s.db.UpdateService(c.Request().Context(), id, req.Name, req.Description, req.URL, req.IconURL); err != nil {
+	if err := s.db.UpdateService(c.Request().Context(), id, req.Name, req.Description, req.URL, req.IconURL, req.AdminRole); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update service"})
 	}
 
@@ -276,8 +278,9 @@ func (s *Server) handleCreateGrant(c echo.Context) error {
 	caller := adminUser(c)
 
 	var req struct {
-		UserID    int64 `json:"user_id"`
-		ServiceID int64 `json:"service_id"`
+		UserID    int64  `json:"user_id"`
+		ServiceID int64  `json:"service_id"`
+		Role      string `json:"role"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -286,7 +289,7 @@ func (s *Server) handleCreateGrant(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "user_id and service_id are required"})
 	}
 
-	grant, err := s.db.CreateGrant(c.Request().Context(), req.UserID, req.ServiceID, caller.ID)
+	grant, err := s.db.CreateGrant(c.Request().Context(), req.UserID, req.ServiceID, caller.ID, req.Role)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create grant"})
 	}

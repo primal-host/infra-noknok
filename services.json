@@ -4,27 +4,31 @@
     "name": "Traefik",
     "description": "Reverse proxy dashboard",
     "url": "https://traefik.primal.host",
-    "icon_url": ""
+    "icon_url": "",
+    "admin_role": "admin"
   },
   {
     "slug": "gitea",
     "name": "Gitea",
     "description": "Git repository mirror",
     "url": "https://gitea.primal.host",
-    "icon_url": ""
+    "icon_url": "",
+    "admin_role": "admin"
   },
   {
     "slug": "athens",
     "name": "Athens",
     "description": "Go module proxy",
     "url": "https://athens.primal.host",
-    "icon_url": ""
+    "icon_url": "",
+    "admin_role": "admin"
   },
   {
     "slug": "avalauncher",
     "name": "Avalauncher",
     "description": "Avalanche L1 management",
     "url": "https://avalauncher.primal.host",
-    "icon_url": ""
+    "icon_url": "",
+    "admin_role": "admin"
   }
 ]
