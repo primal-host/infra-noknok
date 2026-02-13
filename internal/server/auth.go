@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/primal-host/noknok/internal/session"
@@ -34,6 +35,17 @@ func (s *Server) handleAuth(c echo.Context) error {
 	if c.Request().Header.Get("X-Forwarded-Authorization") != "" ||
 		c.Request().Header.Get("Authorization") != "" {
 		return c.NoContent(http.StatusOK)
+	}
+
+	// Non-browser clients (git, curl, API) get 401 so they can retry with
+	// credentials. The backend (e.g. Gitea) will issue its own WWW-Authenticate
+	// challenge once it receives the request.
+	accept := c.Request().Header.Get("X-Forwarded-Accept")
+	if accept == "" {
+		accept = c.Request().Header.Get("Accept")
+	}
+	if !strings.Contains(accept, "text/html") {
+		return c.NoContent(http.StatusUnauthorized)
 	}
 
 	// Build redirect URL from forwarded headers.
