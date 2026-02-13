@@ -38,5 +38,29 @@
     "url": "https://wallet.primal.host",
     "icon_url": "",
     "admin_role": "admin"
+  },
+  {
+    "slug": "pgadmin",
+    "name": "pgAdmin",
+    "description": "PostgreSQL administration",
+    "url": "https://pgadmin.primal.host",
+    "icon_url": "",
+    "admin_role": "admin"
+  },
+  {
+    "slug": "verdaccio",
+    "name": "Verdaccio",
+    "description": "npm package proxy",
+    "url": "https://verdaccio.primal.host",
+    "icon_url": "",
+    "admin_role": "admin"
+  },
+  {
+    "slug": "devpi",
+    "name": "devpi",
+    "description": "Python package proxy",
+    "url": "https://devpi.primal.host",
+    "icon_url": "",
+    "admin_role": "admin"
   }
 ]
