@@ -2,7 +2,9 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -47,5 +49,47 @@ func (db *DB) SeedOwner(ctx context.Context, did string) error {
 
 func (db *DB) bootstrap(ctx context.Context) error {
 	_, err := db.Pool.Exec(ctx, schema)
+	return err
+}
+
+// SeedServices reads a JSON file of services and upserts them into the database.
+func (db *DB) SeedServices(ctx context.Context, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+
+	var svcs []struct {
+		Slug        string `json:"slug"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		URL         string `json:"url"`
+		IconURL     string `json:"icon_url"`
+	}
+	if err := json.Unmarshal(data, &svcs); err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+
+	for _, s := range svcs {
+		_, err := db.Pool.Exec(ctx, `
+			INSERT INTO services (slug, name, description, url, icon_url)
+			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (slug) DO NOTHING`,
+			s.Slug, s.Name, s.Description, s.URL, s.IconURL)
+		if err != nil {
+			return fmt.Errorf("seed service %s: %w", s.Slug, err)
+		}
+	}
+	return nil
+}
+
+// GrantOwnerAllServices grants the owner access to every service.
+func (db *DB) GrantOwnerAllServices(ctx context.Context, ownerDID string) error {
+	_, err := db.Pool.Exec(ctx, `
+		INSERT INTO grants (user_id, service_id, granted_by)
+		SELECT u.id, s.id, u.id
+		FROM users u, services s
+		WHERE u.did = $1
+		ON CONFLICT (user_id, service_id) DO NOTHING`, ownerDID)
 	return err
 }
