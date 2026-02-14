@@ -302,7 +302,7 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
       </div>
       <div class="dd-sep"></div>
       <div class="dd-section">
-        <a href="/login" class="dd-add">+ Add identity...</a>
+        <a href="/login" class="dd-add">+ New sign-in...</a>
       </div>
       <div class="dd-sep"></div>
       <div class="dd-section">
