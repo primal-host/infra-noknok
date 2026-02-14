@@ -81,11 +81,16 @@ func (s *Server) handleAuth(c echo.Context) error {
 	return c.Redirect(http.StatusFound, loginURL)
 }
 
-// handleLogout destroys the session and redirects to login.
+// handleLogout destroys the entire session group and redirects to login.
 func (s *Server) handleLogout(c echo.Context) error {
 	cookie, err := c.Cookie(session.CookieName())
 	if err == nil && cookie.Value != "" {
-		_ = s.sess.Destroy(c.Request().Context(), cookie.Value)
+		sess, err := s.sess.Validate(c.Request().Context(), cookie.Value)
+		if err == nil && sess.GroupID != "" {
+			_ = s.sess.DestroyGroup(c.Request().Context(), sess.GroupID)
+		} else {
+			_ = s.sess.Destroy(c.Request().Context(), cookie.Value)
+		}
 	}
 	c.SetCookie(s.sess.ClearCookie())
 	return c.Redirect(http.StatusFound, s.cfg.PublicURL+"/login")
