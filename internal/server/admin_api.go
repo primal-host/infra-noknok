@@ -326,12 +326,9 @@ func (s *Server) handleToggleServicePublic(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]bool{"public": public})
 }
 
-func (s *Server) handleServiceHealth(c echo.Context) error {
-	svcs, err := s.db.ListServices(c.Request().Context())
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list services"})
-	}
-
+// checkServicesHealth runs parallel HEAD requests against service URLs
+// and returns a map of service ID → alive.
+func (s *Server) checkServicesHealth(svcs []database.Service) map[int64]bool {
 	client := &http.Client{
 		Timeout: 4 * time.Second,
 		Transport: &http.Transport{
@@ -365,9 +362,24 @@ func (s *Server) handleServiceHealth(c echo.Context) error {
 	wg.Wait()
 	close(ch)
 
-	health := make(map[string]bool)
+	health := make(map[int64]bool)
 	for r := range ch {
-		health[strconv.FormatInt(r.id, 10)] = r.alive
+		health[r.id] = r.alive
+	}
+	return health
+}
+
+func (s *Server) handleServiceHealth(c echo.Context) error {
+	svcs, err := s.db.ListServices(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list services"})
+	}
+
+	healthMap := s.checkServicesHealth(svcs)
+
+	health := make(map[string]bool)
+	for id, alive := range healthMap {
+		health[strconv.FormatInt(id, 10)] = alive
 	}
 	return c.JSON(http.StatusOK, health)
 }
