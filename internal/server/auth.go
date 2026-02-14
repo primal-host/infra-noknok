@@ -24,18 +24,29 @@ func (s *Server) handleAuth(c echo.Context) error {
 	if err == nil && cookie.Value != "" {
 		sess, err := s.sess.Validate(c.Request().Context(), cookie.Value)
 		if err == nil {
+			// Check if user is owner/admin (full access) or has a grant for this service.
+			host := c.Request().Header.Get("X-Forwarded-Host")
+			if host != "" {
+				role, roleErr := s.db.GetUserServiceRole(c.Request().Context(), sess.DID, host)
+				if roleErr != nil || role == "" {
+					// User has no grant for this service — deny access.
+					// Redirect browser to portal so they see what they can access.
+					accept := c.Request().Header.Get("X-Forwarded-Accept")
+					if accept == "" {
+						accept = c.Request().Header.Get("Accept")
+					}
+					if strings.Contains(accept, "text/html") {
+						return c.Redirect(http.StatusFound, s.cfg.PublicURL+"/")
+					}
+					return c.NoContent(http.StatusForbidden)
+				}
+				c.Response().Header().Set("X-User-Role", role)
+			}
+
 			c.Response().Header().Set("X-User-DID", sess.DID)
 			c.Response().Header().Set("X-User-Handle", sess.Handle)
 			if sess.Username != "" {
 				c.Response().Header().Set("X-WEBAUTH-USER", sess.Username)
-			}
-
-			// Resolve per-service role from the forwarded host.
-			host := c.Request().Header.Get("X-Forwarded-Host")
-			if host != "" {
-				if role, err := s.db.GetUserServiceRole(c.Request().Context(), sess.DID, host); err == nil && role != "" {
-					c.Response().Header().Set("X-User-Role", role)
-				}
 			}
 
 			return c.NoContent(http.StatusOK)
