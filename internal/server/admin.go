@@ -286,10 +286,10 @@ function renderServices(el) {
   }
   html += '</tbody></table>';
   html += '<div class="admin-form">' +
-    '<input class="admin-input" id="svc-name" placeholder="Name" style="width:100px" oninput="checkAddService()">' +
+    '<input class="admin-input" id="svc-name" placeholder="name" style="width:100px" oninput="checkAddService()">' +
     '<input class="admin-input" id="svc-slug" placeholder="slug" style="width:80px" oninput="checkAddService()">' +
     '<input class="admin-input" id="svc-url" placeholder="https://..." style="flex:1;min-width:130px" oninput="checkAddService()">' +
-    '<input class="admin-input" id="svc-desc" placeholder="Description" style="width:110px">' +
+    '<input class="admin-input" id="svc-desc" placeholder="description" style="width:110px">' +
     '<input class="admin-input" id="svc-admin-role" placeholder="admin" style="width:70px">' +
     '<button class="admin-btn" id="add-svc-btn" onclick="addService()" disabled style="opacity:0.4;cursor:default">Add</button></div>';
   html += '<div id="services-msg"></div>';
