@@ -78,7 +78,7 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
 			initial = string([]rune(svc.Name)[0])
 		}
 		cards += `
-      <a href="` + svc.URL + `" target="` + svc.Slug + `" rel="noopener" class="card" data-svc-id="` + fmt.Sprintf("%d", svc.ID) + `">
+      <a href="` + svc.URL + `" target="` + svc.Slug + `" rel="noopener" class="card" data-svc-id="` + fmt.Sprintf("%d", svc.ID) + `" onclick="return openService(this)">
         <div class="icon">` + initial + `</div>
         <div class="info">
           <h3>` + svc.Name + `</h3>
@@ -115,7 +115,7 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
 	// Logout items.
 	logoutItems := ""
 	for _, id := range identities {
-		logoutItems += fmt.Sprintf(`<form method="POST" action="/logout/one" style="margin:0"><input type="hidden" name="id" value="%d"><button type="submit" class="dd-item dd-btn dd-danger">Log out %s</button></form>`, id.ID, id.Handle)
+		logoutItems += fmt.Sprintf(`<form method="POST" action="/logout/one" style="margin:0" onsubmit="closeAllTracked()"><input type="hidden" name="id" value="%d"><button type="submit" class="dd-item dd-btn dd-danger">Log out %s</button></form>`, id.ID, id.Handle)
 	}
 
 	// Admin item in dropdown (only for admin/owner).
@@ -324,7 +324,7 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
       <div class="dd-sep"></div>
       <div class="dd-section">
         ` + logoutItems + `
-        <form method="POST" action="/logout" style="margin:0">
+        <form method="POST" action="/logout" style="margin:0" onsubmit="closeAllTracked()">
           <button type="submit" class="dd-logout-all">Log out all</button>
         </form>
       </div>
@@ -335,6 +335,26 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
 <div class="grid">` + cards + `
 </div>
 <script>
+var openWindows = {};
+function openService(el) {
+  var w = window.open(el.href, el.target);
+  if (w) openWindows[el.target] = w;
+  return false;
+}
+function closeTrackedWindow(slug) {
+  if (openWindows[slug]) {
+    try { openWindows[slug].close(); } catch(e) {}
+    delete openWindows[slug];
+  }
+}
+function closeAllTracked() {
+  for (var name in openWindows) {
+    if (openWindows.hasOwnProperty(name)) {
+      try { openWindows[name].close(); } catch(e) {}
+    }
+  }
+  openWindows = {};
+}
 function toggleDropdown(e) {
   e.stopPropagation();
   document.getElementById('identity-menu').classList.toggle('open');

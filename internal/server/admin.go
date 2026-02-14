@@ -348,6 +348,10 @@ function toggleCardGrant(svcId) {
     api('DELETE', '/grants/' + grant.id, null, function(err) {
       if (err) { alert(err); return; }
       delete selectedUserGrants[svcId];
+      var card = document.querySelector('.card[data-svc-id="' + svcId + '"]');
+      if (card && card.target && typeof closeTrackedWindow === 'function') {
+        closeTrackedWindow(card.target);
+      }
       updateGrantDots();
     });
   } else {
