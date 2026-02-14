@@ -26,6 +26,9 @@ func (s *Server) handleAuth(c echo.Context) error {
 		if err == nil {
 			c.Response().Header().Set("X-User-DID", sess.DID)
 			c.Response().Header().Set("X-User-Handle", sess.Handle)
+			if sess.Username != "" {
+				c.Response().Header().Set("X-WEBAUTH-USER", sess.Username)
+			}
 
 			// Resolve per-service role from the forwarded host.
 			host := c.Request().Header.Get("X-Forwarded-Host")
