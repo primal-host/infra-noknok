@@ -172,6 +172,26 @@ func (db *DB) ListServicesForUser(ctx context.Context, userID int64) ([]Service,
 	return svcs, rows.Err()
 }
 
+func (db *DB) ListPublicServices(ctx context.Context) ([]Service, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT id, slug, name, description, url, COALESCE(icon_url, ''), admin_role, enabled, public, created_at
+		FROM services WHERE public = true AND enabled = true ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var svcs []Service
+	for rows.Next() {
+		var s Service
+		if err := rows.Scan(&s.ID, &s.Slug, &s.Name, &s.Description, &s.URL, &s.IconURL, &s.AdminRole, &s.Enabled, &s.Public, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		svcs = append(svcs, s)
+	}
+	return svcs, rows.Err()
+}
+
 func (db *DB) CreateService(ctx context.Context, slug, name, description, url, iconURL, adminRole string) (*Service, error) {
 	if adminRole == "" {
 		adminRole = "admin"
