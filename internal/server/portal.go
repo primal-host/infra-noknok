@@ -481,11 +481,21 @@ document.addEventListener('keydown', function(e) {
         var data = JSON.parse(xhr.responseText);
         var ap = document.getElementById('admin-panel');
         if (ap && ap.style.display !== 'none') return;
-        var downMap = {}, disabledMap = {};
-        for (var i = 0; i < data.down.length; i++) downMap[data.down[i]] = true;
-        for (var i = 0; i < data.disabled.length; i++) disabledMap[data.disabled[i]] = true;
+        var allIds = {}, i;
+        for (i = 0; i < data.enabled.length; i++) allIds[data.enabled[i]] = true;
+        for (i = 0; i < data.down.length; i++) allIds[data.down[i]] = true;
+        for (i = 0; i < data.disabled.length; i++) allIds[data.disabled[i]] = true;
         var cards = document.querySelectorAll('.card[data-svc-id]');
-        for (var i = 0; i < cards.length; i++) {
+        var cardIds = {};
+        for (i = 0; i < cards.length; i++) cardIds[cards[i].getAttribute('data-svc-id')] = true;
+        var changed = false;
+        for (var id in allIds) { if (allIds.hasOwnProperty(id) && !cardIds[id]) { changed = true; break; } }
+        if (!changed) { for (var id in cardIds) { if (cardIds.hasOwnProperty(id) && !allIds[id]) { changed = true; break; } } }
+        if (changed) { window.location.reload(); return; }
+        var downMap = {}, disabledMap = {};
+        for (i = 0; i < data.down.length; i++) downMap[data.down[i]] = true;
+        for (i = 0; i < data.disabled.length; i++) disabledMap[data.disabled[i]] = true;
+        for (i = 0; i < cards.length; i++) {
           var card = cards[i];
           var svcId = card.getAttribute('data-svc-id');
           var status = disabledMap[svcId] ? 'red' : (downMap[svcId] ? 'yellow' : 'green');
@@ -507,18 +517,30 @@ document.addEventListener('keydown', function(e) {
 </html>`
 }
 
-// handleHealthStatus returns service IDs that are down or disabled.
+// handleHealthStatus returns user-specific service status as three arrays.
 func (s *Server) handleHealthStatus(c echo.Context) error {
 	cookie, err := c.Cookie(session.CookieName())
 	if err != nil || cookie.Value == "" {
 		return c.NoContent(http.StatusUnauthorized)
 	}
-	_, err = s.sess.Validate(c.Request().Context(), cookie.Value)
+	sess, err := s.sess.Validate(c.Request().Context(), cookie.Value)
 	if err != nil {
 		return c.NoContent(http.StatusUnauthorized)
 	}
 
-	svcs, err := s.db.ListServices(c.Request().Context())
+	ctx := c.Request().Context()
+	user, err := s.db.GetUserByDID(ctx, sess.DID)
+	if err != nil {
+		return c.NoContent(http.StatusUnauthorized)
+	}
+
+	isAdmin := user.Role == "owner" || user.Role == "admin"
+	var svcs []database.Service
+	if isAdmin {
+		svcs, err = s.db.ListServices(ctx)
+	} else {
+		svcs, err = s.db.ListServicesForUser(ctx, user.ID)
+	}
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed"})
 	}
@@ -526,12 +548,17 @@ func (s *Server) handleHealthStatus(c echo.Context) error {
 
 	down := make([]int64, 0)
 	disabled := make([]int64, 0)
+	enabled := make([]int64, 0)
 	for _, svc := range svcs {
 		if !svc.Enabled {
 			disabled = append(disabled, svc.ID)
 		} else if !health[svc.ID] {
 			down = append(down, svc.ID)
+		} else {
+			enabled = append(enabled, svc.ID)
 		}
 	}
-	return c.JSON(http.StatusOK, map[string][]int64{"down": down, "disabled": disabled})
+	return c.JSON(http.StatusOK, map[string][]int64{
+		"down": down, "disabled": disabled, "enabled": enabled,
+	})
 }
