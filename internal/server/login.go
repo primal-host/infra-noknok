@@ -8,6 +8,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/primal-host/noknok/internal/config"
+	"github.com/primal-host/noknok/internal/session"
 )
 
 const redirectCookieName = "noknok_redirect"
@@ -75,8 +76,35 @@ func (s *Server) handleOAuthCallback(c echo.Context) error {
 		return c.Redirect(http.StatusFound, s.cfg.PublicURL+"/login?error="+url.QueryEscape("Access denied. You are not authorized."))
 	}
 
+	// Check for existing session group (adding identity to existing browser session).
+	var groupID string
+	if existing, err := c.Cookie(session.CookieName()); err == nil && existing.Value != "" {
+		if existingSess, err := s.sess.Validate(c.Request().Context(), existing.Value); err == nil {
+			groupID = existingSess.GroupID
+
+			// If this DID already exists in the group, switch to it instead of creating a duplicate.
+			if existingID, _, found := s.sess.GroupHasDID(c.Request().Context(), groupID, did); found {
+				switchCookie, switchErr := s.sess.SwitchTo(c.Request().Context(), groupID, existingID)
+				if switchErr != nil {
+					slog.Warn("failed to switch to existing identity", "did", did, "error", switchErr)
+				} else {
+					c.SetCookie(switchCookie)
+				}
+				slog.Info("switched to existing identity in group", "did", did, "handle", resolvedHandle)
+				dest := s.cfg.PublicURL + "/"
+				if rc, err := c.Cookie(redirectCookieName); err == nil && rc.Value != "" {
+					if isAllowedRedirect(rc.Value, s.cfg) {
+						dest = rc.Value
+					}
+					c.SetCookie(&http.Cookie{Name: redirectCookieName, Value: "", Path: "/", MaxAge: -1})
+				}
+				return c.Redirect(http.StatusFound, dest)
+			}
+		}
+	}
+
 	// Create noknok session.
-	cookie, err := s.sess.Create(c.Request().Context(), did, resolvedHandle)
+	cookie, err := s.sess.Create(c.Request().Context(), did, resolvedHandle, groupID)
 	if err != nil {
 		slog.Error("failed to create session", "error", err)
 		return c.Redirect(http.StatusFound, s.cfg.PublicURL+"/login?error="+url.QueryEscape("Internal error. Please try again."))
