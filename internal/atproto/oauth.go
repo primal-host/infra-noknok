@@ -23,7 +23,7 @@ func NewOAuthClient(publicURL, privateKeyMultibase string, store oauth.ClientAut
 	callbackURL := publicURL + "/oauth/callback"
 
 	cfg := oauth.NewPublicConfig(clientID, callbackURL, []string{"atproto"})
-	cfg.UserAgent = "noknok/0.3.0"
+	cfg.UserAgent = "noknok/0.4.0"
 
 	privKey, err := atcrypto.ParsePrivateMultibase(privateKeyMultibase)
 	if err != nil {
