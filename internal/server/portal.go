@@ -263,6 +263,7 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
     color: inherit;
     transition: background 0.15s, transform 0.1s;
     position: relative;
+    flex-wrap: wrap;
   }
   .card:hover { background: #334155; transform: translateY(-2px); }
   .disabled-dot {
@@ -295,14 +296,10 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
   .tl-dot.tl-yellow { background: #eab308; }
   .tl-dot.tl-green { background: #22c55e; }
   .detail-panel {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
+    flex-basis: 100%;
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.3s ease;
-    z-index: 50;
   }
   .detail-panel.open { max-height: 80px; }
   .detail-inner {
