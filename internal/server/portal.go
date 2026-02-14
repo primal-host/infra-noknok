@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -42,10 +43,26 @@ func (s *Server) handlePortal(c echo.Context) error {
 		svcs = nil
 	}
 
-	return c.HTML(http.StatusOK, portalHTML(sess.Handle, svcs, isAdmin, user.Role))
+	// Load session group for identity dropdown.
+	var group []session.Session
+	if sess.GroupID != "" {
+		group, _ = s.sess.ListGroup(ctx, sess.GroupID)
+	}
+	if len(group) == 0 {
+		// Legacy session or error — show as single identity.
+		group = []session.Session{*sess}
+	}
+
+	return c.HTML(http.StatusOK, portalHTML(sess, group, svcs, isAdmin, user.Role))
 }
 
-func portalHTML(handle string, svcs []database.Service, isAdmin bool, role string) string {
+type identityInfo struct {
+	ID     int64
+	Handle string
+	Active bool
+}
+
+func portalHTML(active *session.Session, group []session.Session, svcs []database.Service, isAdmin bool, role string) string {
 	cards := ""
 	for _, svc := range svcs {
 		initial := "?"
@@ -66,10 +83,36 @@ func portalHTML(handle string, svcs []database.Service, isAdmin bool, role strin
 		cards = `<p class="empty">No services configured.</p>`
 	}
 
-	// Username display: clickable for admins/owners, plain for users.
-	handleHTML := `<span>` + handle + `</span>`
+	// Build identity list.
+	identities := make([]identityInfo, 0, len(group))
+	for _, s := range group {
+		identities = append(identities, identityInfo{
+			ID:     s.ID,
+			Handle: s.Handle,
+			Active: s.Token == active.Token,
+		})
+	}
+
+	// Identity dropdown items.
+	identityItems := ""
+	for _, id := range identities {
+		if id.Active {
+			identityItems += `<div class="dd-item dd-active">` + id.Handle + `</div>`
+		} else {
+			identityItems += fmt.Sprintf(`<form method="POST" action="/switch" style="margin:0"><input type="hidden" name="id" value="%d"><button type="submit" class="dd-item dd-btn">%s</button></form>`, id.ID, id.Handle)
+		}
+	}
+
+	// Logout items.
+	logoutItems := ""
+	for _, id := range identities {
+		logoutItems += fmt.Sprintf(`<form method="POST" action="/logout/one" style="margin:0"><input type="hidden" name="id" value="%d"><button type="submit" class="dd-item dd-btn dd-danger">Log out %s</button></form>`, id.ID, id.Handle)
+	}
+
+	// Admin gear button (only for admin/owner).
+	adminGear := ""
 	if isAdmin {
-		handleHTML = `<span style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px" onclick="openAdmin()">` + handle + `</span>`
+		adminGear = `<button class="gear-btn" onclick="openAdmin()" title="Admin panel">&#9881;</button>`
 	}
 
 	adminHTML := ""
@@ -103,11 +146,23 @@ func portalHTML(handle string, svcs []database.Service, isAdmin bool, role strin
   .user {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.5rem;
     font-size: 0.875rem;
     color: #94a3b8;
+    position: relative;
   }
-  .logout {
+  .gear-btn {
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 1.125rem;
+    cursor: pointer;
+    padding: 0.25rem;
+    transition: color 0.15s;
+    line-height: 1;
+  }
+  .gear-btn:hover { color: #e2e8f0; }
+  .dd-trigger {
     background: #334155;
     color: #e2e8f0;
     border: none;
@@ -116,8 +171,73 @@ func portalHTML(handle string, svcs []database.Service, isAdmin bool, role strin
     font-size: 0.8125rem;
     cursor: pointer;
     transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
   }
-  .logout:hover { background: #475569; }
+  .dd-trigger:hover { background: #475569; }
+  .dd-arrow { font-size: 0.625rem; opacity: 0.7; }
+  .dd-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 0.375rem);
+    right: 0;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    min-width: 240px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 100;
+    overflow: hidden;
+  }
+  .dd-menu.open { display: block; }
+  .dd-section { padding: 0.25rem 0; }
+  .dd-sep { border-top: 1px solid #334155; margin: 0; }
+  .dd-item {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    color: #e2e8f0;
+    text-align: left;
+  }
+  .dd-active {
+    color: #3b82f6;
+    font-weight: 500;
+  }
+  .dd-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: inherit;
+  }
+  .dd-btn:hover { background: #334155; }
+  .dd-danger { color: #f87171; }
+  .dd-danger:hover { background: #7f1d1d; }
+  .dd-add {
+    color: #94a3b8;
+    text-decoration: none;
+    display: block;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    transition: background 0.15s;
+  }
+  .dd-add:hover { background: #334155; color: #e2e8f0; }
+  .dd-logout-all {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    color: #f87171;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .dd-logout-all:hover { background: #7f1d1d; }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -172,15 +292,43 @@ func portalHTML(handle string, svcs []database.Service, isAdmin bool, role strin
 <div class="header">
   <h1>noknok</h1>
   <div class="user">
-    ` + handleHTML + `
-    <form method="POST" action="/logout" style="margin:0">
-      <button class="logout" type="submit">Sign Out</button>
-    </form>
+    ` + adminGear + `
+    <button class="dd-trigger" onclick="toggleDropdown(event)">
+      ` + active.Handle + ` <span class="dd-arrow">&#9660;</span>
+    </button>
+    <div class="dd-menu" id="identity-menu">
+      <div class="dd-section">
+        ` + identityItems + `
+      </div>
+      <div class="dd-sep"></div>
+      <div class="dd-section">
+        <a href="/login" class="dd-add">+ Add identity...</a>
+      </div>
+      <div class="dd-sep"></div>
+      <div class="dd-section">
+        ` + logoutItems + `
+        <form method="POST" action="/logout" style="margin:0">
+          <button type="submit" class="dd-logout-all">Log out all</button>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 <div class="grid">` + cards + `
 </div>
 ` + adminHTML + `
+<script>
+function toggleDropdown(e) {
+  e.stopPropagation();
+  document.getElementById('identity-menu').classList.toggle('open');
+}
+document.addEventListener('click', function() {
+  document.getElementById('identity-menu').classList.remove('open');
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') document.getElementById('identity-menu').classList.remove('open');
+});
+</script>
 </body>
 </html>`
 }
