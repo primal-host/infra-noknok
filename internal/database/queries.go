@@ -25,6 +25,8 @@ type Service struct {
 	URL         string    `json:"url"`
 	IconURL     string    `json:"icon_url"`
 	AdminRole   string    `json:"admin_role"`
+	Enabled     bool      `json:"enabled"`
+	Public      bool      `json:"public"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -129,7 +131,7 @@ func (db *DB) UserExists(ctx context.Context, did string) (bool, error) {
 
 func (db *DB) ListServices(ctx context.Context) ([]Service, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT id, slug, name, description, url, COALESCE(icon_url, ''), admin_role, created_at
+		SELECT id, slug, name, description, url, COALESCE(icon_url, ''), admin_role, enabled, public, created_at
 		FROM services ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -139,7 +141,7 @@ func (db *DB) ListServices(ctx context.Context) ([]Service, error) {
 	var svcs []Service
 	for rows.Next() {
 		var s Service
-		if err := rows.Scan(&s.ID, &s.Slug, &s.Name, &s.Description, &s.URL, &s.IconURL, &s.AdminRole, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.Slug, &s.Name, &s.Description, &s.URL, &s.IconURL, &s.AdminRole, &s.Enabled, &s.Public, &s.CreatedAt); err != nil {
 			return nil, err
 		}
 		svcs = append(svcs, s)
@@ -149,7 +151,7 @@ func (db *DB) ListServices(ctx context.Context) ([]Service, error) {
 
 func (db *DB) ListServicesForUser(ctx context.Context, userID int64) ([]Service, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT s.id, s.slug, s.name, s.description, s.url, COALESCE(s.icon_url, ''), s.admin_role, s.created_at
+		SELECT s.id, s.slug, s.name, s.description, s.url, COALESCE(s.icon_url, ''), s.admin_role, s.enabled, s.public, s.created_at
 		FROM services s
 		JOIN grants g ON g.service_id = s.id
 		WHERE g.user_id = $1
@@ -162,7 +164,7 @@ func (db *DB) ListServicesForUser(ctx context.Context, userID int64) ([]Service,
 	var svcs []Service
 	for rows.Next() {
 		var s Service
-		if err := rows.Scan(&s.ID, &s.Slug, &s.Name, &s.Description, &s.URL, &s.IconURL, &s.AdminRole, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.Slug, &s.Name, &s.Description, &s.URL, &s.IconURL, &s.AdminRole, &s.Enabled, &s.Public, &s.CreatedAt); err != nil {
 			return nil, err
 		}
 		svcs = append(svcs, s)
@@ -178,9 +180,9 @@ func (db *DB) CreateService(ctx context.Context, slug, name, description, url, i
 	err := db.Pool.QueryRow(ctx, `
 		INSERT INTO services (slug, name, description, url, icon_url, admin_role)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, slug, name, description, url, COALESCE(icon_url, ''), admin_role, created_at`,
+		RETURNING id, slug, name, description, url, COALESCE(icon_url, ''), admin_role, enabled, public, created_at`,
 		slug, name, description, url, iconURL, adminRole).
-		Scan(&s.ID, &s.Slug, &s.Name, &s.Description, &s.URL, &s.IconURL, &s.AdminRole, &s.CreatedAt)
+		Scan(&s.ID, &s.Slug, &s.Name, &s.Description, &s.URL, &s.IconURL, &s.AdminRole, &s.Enabled, &s.Public, &s.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +197,22 @@ func (db *DB) UpdateService(ctx context.Context, id int64, name, description, ur
 		UPDATE services SET name = $1, description = $2, url = $3, icon_url = $4, admin_role = $5
 		WHERE id = $6`, name, description, url, iconURL, adminRole, id)
 	return err
+}
+
+func (db *DB) ToggleServiceEnabled(ctx context.Context, id int64) (bool, error) {
+	var enabled bool
+	err := db.Pool.QueryRow(ctx, `
+		UPDATE services SET enabled = NOT enabled WHERE id = $1
+		RETURNING enabled`, id).Scan(&enabled)
+	return enabled, err
+}
+
+func (db *DB) ToggleServicePublic(ctx context.Context, id int64) (bool, error) {
+	var public bool
+	err := db.Pool.QueryRow(ctx, `
+		UPDATE services SET public = NOT public WHERE id = $1
+		RETURNING public`, id).Scan(&public)
+	return public, err
 }
 
 func (db *DB) DeleteService(ctx context.Context, id int64) error {
