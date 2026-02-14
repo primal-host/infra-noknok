@@ -53,6 +53,9 @@ func (s *Server) handlePortal(c echo.Context) error {
 		group = []session.Session{*sess}
 	}
 
+	// Run parallel health checks for traffic light indicators.
+	healthMap := s.checkServicesHealth(svcs)
+
 	// Check if ?admin is in the URL (works with ?admin, ?admin=, ?admin=1).
 	_, adminOpen := c.QueryParams()["admin"]
 	adminOpen = adminOpen && isAdmin
@@ -61,7 +64,7 @@ func (s *Server) handlePortal(c echo.Context) error {
 		adminTab = "users"
 	}
 
-	return c.HTML(http.StatusOK, portalHTML(sess, group, svcs, isAdmin, user.Role, adminOpen, adminTab))
+	return c.HTML(http.StatusOK, portalHTML(sess, group, svcs, healthMap, isAdmin, user.Role, adminOpen, adminTab))
 }
 
 type identityInfo struct {
@@ -70,26 +73,35 @@ type identityInfo struct {
 	Active bool
 }
 
-func portalHTML(active *session.Session, group []session.Session, svcs []database.Service, isAdmin bool, role string, adminOpen bool, adminTab string) string {
+func portalHTML(active *session.Session, group []session.Session, svcs []database.Service, healthMap map[int64]bool, isAdmin bool, role string, adminOpen bool, adminTab string) string {
 	cards := ""
 	for _, svc := range svcs {
 		initial := "?"
 		if len(svc.Name) > 0 {
 			initial = string([]rune(svc.Name)[0])
 		}
-		disabledDot := ""
+		// Determine service status: red=disabled, yellow=enabled+unhealthy, green=enabled+healthy.
+		status := "green"
+		dot1Class := "tl-off"
+		dot2Class := "tl-off"
+		dot3Class := "tl-green"
 		if !svc.Enabled {
-			disabledDot = `<div class="disabled-dot"></div>`
+			status = "red"
+			dot1Class = "tl-red"
+			dot3Class = "tl-off"
+		} else if !healthMap[svc.ID] {
+			status = "yellow"
+			dot2Class = "tl-yellow"
+			dot3Class = "tl-off"
 		}
 		cards += `
-      <a href="` + svc.URL + `" target="` + svc.Slug + `" rel="noopener" class="card" data-svc-id="` + fmt.Sprintf("%d", svc.ID) + `" onclick="return openService(this)">
+      <a href="` + svc.URL + `" target="` + svc.Slug + `" rel="noopener" class="card" data-svc-id="` + fmt.Sprintf("%d", svc.ID) + `" data-svc-status="` + status + `" onclick="return openService(this)">
         <div class="icon">` + initial + `</div>
         <div class="info">
           <h3>` + svc.Name + `</h3>
           <p>` + svc.Description + `</p>
         </div>
-        ` + disabledDot + `
-        <div class="traffic-light" style="display:none"><div class="tl-dot tl-enabled"></div><div class="tl-dot tl-public"></div><div class="tl-dot tl-health"></div></div>
+        <div class="traffic-light"><div class="tl-dot tl-enabled ` + dot1Class + `"></div><div class="tl-dot tl-public ` + dot2Class + `"></div><div class="tl-dot tl-health ` + dot3Class + `"></div></div>
       </a>`
 	}
 
@@ -266,15 +278,6 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
     flex-wrap: wrap;
   }
   .card:hover { background: #334155; transform: translateY(-2px); }
-  .disabled-dot {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    width: 1rem;
-    height: 1rem;
-    border-radius: 4px;
-    background: #ef4444;
-  }
   .traffic-light {
     position: absolute;
     right: 0.5rem;
@@ -392,6 +395,8 @@ function openService(el) {
     toggleDetail(el);
     return false;
   }
+  var status = el.getAttribute('data-svc-status');
+  if (status !== 'green') return false;
   var w = window.open(el.href, el.target);
   if (w) openWindows[el.target] = w;
   return false;
