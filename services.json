@@ -62,5 +62,13 @@
     "url": "https://devpi.primal.host",
     "icon_url": "",
     "admin_role": "admin"
+  },
+  {
+    "slug": "primal-pds",
+    "name": "PDS",
+    "description": "AT Protocol Personal Data Server",
+    "url": "https://pds.primal.host",
+    "icon_url": "",
+    "admin_role": "admin"
   }
 ]
