@@ -319,6 +319,7 @@ func loginHTML(redirect, errMsg string, hasSession bool) string {
   ch.postMessage({ type: 'ping' });
   ch.onmessage = function(e) {
     if (e.data.type === 'pong') {
+      ch.postMessage({ type: 'focus' });
       window.close();
     }
   };

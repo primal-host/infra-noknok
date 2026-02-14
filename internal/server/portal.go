@@ -368,8 +368,8 @@ document.addEventListener('keydown', function(e) {
 });
 // Duplicate-tab detection via BroadcastChannel.
 // The first portal tab claims "primary". Any subsequent portal tab
-// that arrives (e.g. from a forwardAuth deny redirect) tries to
-// close itself if a primary already exists.
+// that arrives (e.g. from a forwardAuth deny redirect) asks the
+// primary to focus and then closes itself.
 (function() {
   if (typeof BroadcastChannel === 'undefined') return;
   var ch = new BroadcastChannel('noknok_portal');
@@ -381,15 +381,29 @@ document.addEventListener('keydown', function(e) {
     isPrimary = true;
   }, 200);
   ch.onmessage = function(e) {
-    if (e.data.type === 'ping') {
-      // Another tab is asking — respond if we are primary.
-      if (isPrimary) ch.postMessage({ type: 'pong' });
-    } else if (e.data.type === 'pong') {
-      // A primary exists — this tab is a duplicate.
+    if (e.data.type === 'ping' && isPrimary) {
+      ch.postMessage({ type: 'pong' });
+    } else if (e.data.type === 'pong' && !isPrimary) {
       clearTimeout(timer);
+      ch.postMessage({ type: 'focus' });
       window.close();
+    } else if (e.data.type === 'focus' && isPrimary) {
+      window.focus();
     }
   };
+})();
+// Reload on tab focus to refresh grants and service cards.
+// Only if the tab was hidden for more than 5 seconds, to avoid
+// reloading during quick tab switches.
+(function() {
+  var hiddenAt = 0;
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      hiddenAt = Date.now();
+    } else if (hiddenAt && (Date.now() - hiddenAt) > 5000) {
+      window.location.reload();
+    }
+  });
 })();
 </script>
 </body>
