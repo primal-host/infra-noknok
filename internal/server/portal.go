@@ -115,7 +115,7 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
 		adminItem = `
       <div class="dd-sep"></div>
       <div class="dd-section">
-        <a href="#" class="dd-add" onclick="event.preventDefault();document.getElementById('identity-menu').classList.remove('open');openAdmin()">Admin</a>
+        <a href="/?admin" class="dd-add">Admin</a>
       </div>`
 	}
 
@@ -322,6 +322,7 @@ document.addEventListener('click', function(e) {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') document.getElementById('identity-menu').classList.remove('open');
 });
+if (window.location.search === '?admin' && typeof openAdmin === 'function') openAdmin();
 </script>
 </body>
 </html>`
