@@ -426,6 +426,7 @@ document.addEventListener('keydown', function(e) {
       window.close();
     } else if (e.data.type === 'focus' && isPrimary) {
       window.focus();
+      window.location.reload();
     }
   };
 })();
