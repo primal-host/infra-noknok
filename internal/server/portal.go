@@ -293,7 +293,7 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
   .traffic-light {
     position: absolute;
     right: 0.5rem;
-    top: 0.5rem;
+    top: 1.125rem;
     display: flex;
     flex-direction: column;
     gap: 3px;
