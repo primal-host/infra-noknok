@@ -3,12 +3,15 @@ package server
 import (
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
 	"github.com/primal-host/noknok/internal/database"
 	"github.com/primal-host/noknok/internal/session"
 )
+
+var validUsername = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,39}$`)
 
 const ctxKeyUser = "admin_user"
 
@@ -56,8 +59,9 @@ func (s *Server) handleCreateUser(c echo.Context) error {
 	caller := adminUser(c)
 
 	var req struct {
-		Handle string `json:"handle"`
-		Role   string `json:"role"`
+		Handle   string `json:"handle"`
+		Role     string `json:"role"`
+		Username string `json:"username"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -84,7 +88,11 @@ func (s *Server) handleCreateUser(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "could not resolve handle"})
 	}
 
-	user, err := s.db.CreateUser(c.Request().Context(), did, resolvedHandle, req.Role)
+	if req.Username != "" && !validUsername.MatchString(req.Username) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid username (alphanumeric, hyphens, underscores, 1-39 chars)"})
+	}
+
+	user, err := s.db.CreateUser(c.Request().Context(), did, resolvedHandle, req.Role, req.Username)
 	if err != nil {
 		slog.Warn("create user failed", "did", did, "error", err)
 		return c.JSON(http.StatusConflict, map[string]string{"error": "user already exists"})
@@ -133,6 +141,32 @@ func (s *Server) handleUpdateUserRole(c echo.Context) error {
 	}
 
 	slog.Info("user role updated", "user_id", id, "role", req.Role, "by", caller.Handle)
+	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleUpdateUserUsername(c echo.Context) error {
+	caller := adminUser(c)
+
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user ID"})
+	}
+
+	var req struct {
+		Username string `json:"username"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if req.Username != "" && !validUsername.MatchString(req.Username) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid username (alphanumeric, hyphens, underscores, 1-39 chars)"})
+	}
+
+	if err := s.db.UpdateUserUsername(c.Request().Context(), id, req.Username); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update username"})
+	}
+
+	slog.Info("user username updated", "user_id", id, "username", req.Username, "by", caller.Handle)
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
