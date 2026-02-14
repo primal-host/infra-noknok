@@ -205,7 +205,7 @@ func loginHTML(redirect, errMsg string, hasSession bool, svcs []database.Service
 			desc = string([]rune(desc)[:20]) + "..."
 		}
 		serviceCards += `
-      <a href="` + svc.URL + `" class="card svc-card" rel="noopener">
+      <a href="` + svc.URL + `" target="_blank" class="card svc-card" rel="noopener">
         <div class="icon"><img src="` + faviconURL + `" onerror="this.style.display='none';this.nextSibling.style.display=''" style="width:28px;height:28px;border-radius:4px"><span style="display:none">` + initial + `</span></div>
         <div class="info">
           <h3>` + svc.Name + `</h3>
