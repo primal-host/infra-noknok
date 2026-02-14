@@ -16,10 +16,12 @@ const cookieName = "noknok_session"
 
 // Session represents an active user session.
 type Session struct {
+	ID        int64
 	Token     string
 	DID       string
 	Handle    string
 	Username  string
+	GroupID   string
 	ExpiresAt time.Time
 }
 
@@ -44,10 +46,18 @@ func NewManager(pool *pgxpool.Pool, ttl time.Duration, cookieDomain string, secu
 }
 
 // Create inserts a new session and returns a cookie to set on the response.
-func (m *Manager) Create(ctx context.Context, did, handle string) (*http.Cookie, error) {
+// If groupID is empty, a new group is created.
+func (m *Manager) Create(ctx context.Context, did, handle, groupID string) (*http.Cookie, error) {
 	token, err := generateToken()
 	if err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
+	}
+
+	if groupID == "" {
+		groupID, err = generateUUID()
+		if err != nil {
+			return nil, fmt.Errorf("generate group id: %w", err)
+		}
 	}
 
 	// Look up username from users table.
@@ -56,9 +66,9 @@ func (m *Manager) Create(ctx context.Context, did, handle string) (*http.Cookie,
 
 	expiresAt := time.Now().Add(m.ttl)
 	_, err = m.pool.Exec(ctx, `
-		INSERT INTO sessions (token, did, handle, username, expires_at)
-		VALUES ($1, $2, $3, $4, $5)
-	`, token, did, handle, username, expiresAt)
+		INSERT INTO sessions (token, did, handle, username, group_id, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, token, did, handle, username, groupID, expiresAt)
 	if err != nil {
 		return nil, fmt.Errorf("insert session: %w", err)
 	}
@@ -71,25 +81,16 @@ func (m *Manager) Create(ctx context.Context, did, handle string) (*http.Cookie,
 		slog.Warn("failed to update user handle", "did", did, "error", err)
 	}
 
-	return &http.Cookie{
-		Name:     cookieName,
-		Value:    token,
-		Path:     "/",
-		Domain:   m.cookieDomain,
-		Expires:  expiresAt,
-		HttpOnly: true,
-		Secure:   m.secure,
-		SameSite: http.SameSiteLaxMode,
-	}, nil
+	return m.makeCookie(token, expiresAt), nil
 }
 
 // Validate checks a session token and returns the session if valid.
 func (m *Manager) Validate(ctx context.Context, token string) (*Session, error) {
 	var s Session
 	err := m.pool.QueryRow(ctx, `
-		SELECT token, did, handle, username, expires_at FROM sessions
+		SELECT id, token, did, handle, username, COALESCE(group_id, ''), expires_at FROM sessions
 		WHERE token = $1 AND expires_at > now()
-	`, token).Scan(&s.Token, &s.DID, &s.Handle, &s.Username, &s.ExpiresAt)
+	`, token).Scan(&s.ID, &s.Token, &s.DID, &s.Handle, &s.Username, &s.GroupID, &s.ExpiresAt)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +103,101 @@ func (m *Manager) Validate(ctx context.Context, token string) (*Session, error) 
 	}()
 
 	return &s, nil
+}
+
+// ListGroup returns all non-expired sessions in a group, ordered by creation time.
+func (m *Manager) ListGroup(ctx context.Context, groupID string) ([]Session, error) {
+	if groupID == "" {
+		return nil, nil
+	}
+	rows, err := m.pool.Query(ctx, `
+		SELECT id, token, did, handle, username, group_id, expires_at FROM sessions
+		WHERE group_id = $1 AND expires_at > now()
+		ORDER BY created_at
+	`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []Session
+	for rows.Next() {
+		var s Session
+		if err := rows.Scan(&s.ID, &s.Token, &s.DID, &s.Handle, &s.Username, &s.GroupID, &s.ExpiresAt); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
+}
+
+// GroupHasDID checks if a DID already exists in a group and returns the session ID if so.
+func (m *Manager) GroupHasDID(ctx context.Context, groupID, did string) (int64, string, bool) {
+	if groupID == "" {
+		return 0, "", false
+	}
+	var id int64
+	var token string
+	err := m.pool.QueryRow(ctx, `
+		SELECT id, token FROM sessions
+		WHERE group_id = $1 AND did = $2 AND expires_at > now()
+	`, groupID, did).Scan(&id, &token)
+	if err != nil {
+		return 0, "", false
+	}
+	return id, token, true
+}
+
+// SwitchTo switches the active session within a group. Returns a cookie for the target session.
+func (m *Manager) SwitchTo(ctx context.Context, groupID string, sessionID int64) (*http.Cookie, error) {
+	var token string
+	var expiresAt time.Time
+	err := m.pool.QueryRow(ctx, `
+		SELECT token, expires_at FROM sessions
+		WHERE id = $1 AND group_id = $2 AND expires_at > now()
+	`, sessionID, groupID).Scan(&token, &expiresAt)
+	if err != nil {
+		return nil, fmt.Errorf("session not found in group: %w", err)
+	}
+	return m.makeCookie(token, expiresAt), nil
+}
+
+// DestroyOne deletes one session from a group. If wasActive is true, returns a cookie
+// for the next session in the group, or ClearCookie if none remain.
+func (m *Manager) DestroyOne(ctx context.Context, groupID string, sessionID int64, wasActive bool) (*http.Cookie, error) {
+	_, err := m.pool.Exec(ctx, `
+		DELETE FROM sessions WHERE id = $1 AND group_id = $2
+	`, sessionID, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("delete session: %w", err)
+	}
+
+	if !wasActive {
+		return nil, nil // no cookie change needed
+	}
+
+	// Find the next session in the group.
+	var token string
+	var expiresAt time.Time
+	err = m.pool.QueryRow(ctx, `
+		SELECT token, expires_at FROM sessions
+		WHERE group_id = $1 AND expires_at > now()
+		ORDER BY created_at LIMIT 1
+	`, groupID).Scan(&token, &expiresAt)
+	if err != nil {
+		// No sessions left — clear cookie.
+		return m.ClearCookie(), nil
+	}
+	return m.makeCookie(token, expiresAt), nil
+}
+
+// DestroyGroup deletes all sessions in a group.
+func (m *Manager) DestroyGroup(ctx context.Context, groupID string) error {
+	if groupID == "" {
+		return nil
+	}
+	_, err := m.pool.Exec(ctx, `DELETE FROM sessions WHERE group_id = $1`, groupID)
+	return err
 }
 
 // Destroy removes a session (logout).
@@ -157,10 +253,34 @@ func (m *Manager) StopCleanup() {
 	close(m.stopCleanup)
 }
 
+func (m *Manager) makeCookie(token string, expiresAt time.Time) *http.Cookie {
+	return &http.Cookie{
+		Name:     cookieName,
+		Value:    token,
+		Path:     "/",
+		Domain:   m.cookieDomain,
+		Expires:  expiresAt,
+		HttpOnly: true,
+		Secure:   m.secure,
+		SameSite: http.SameSiteLaxMode,
+	}
+}
+
 func generateToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+func generateUUID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	// Set version 4 and variant bits.
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
 }
