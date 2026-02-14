@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions (token);
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS group_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_sessions_group_id ON sessions (group_id) WHERE group_id != '';
 
 CREATE TABLE IF NOT EXISTS users (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
