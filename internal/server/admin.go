@@ -437,13 +437,16 @@ function buildDetail(card, svcId) {
   var greenBtn = document.createElement('button');
   var noop = function(e) { e.stopPropagation(); e.preventDefault(); };
   if (isAdmin) {
-    // Red: toggle enabled/disabled. Yellow: toggle public/internal. Green: outline spacer.
-    redBtn.className = 'detail-btn ' + (svc.enabled ? 'db-off' : 'db-red');
-    (function(sid, c) { redBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); api('PUT', '/services/' + sid + '/enabled', {}, function(err) { if (err) { alert(err); return; } refreshDetail(c, sid); }); }; })(svcId, card);
+    // Red/Green: toggle enabled/disabled. Yellow: toggle public/internal.
+    redBtn.className = 'detail-btn ' + (svc.enabled ? 'db-outline' : 'db-red');
+    greenBtn.className = 'detail-btn ' + (svc.enabled ? 'db-green' : 'db-outline');
+    (function(sid, c) {
+      var handler = function(e) { e.stopPropagation(); e.preventDefault(); api('PUT', '/services/' + sid + '/enabled', {}, function(err) { if (err) { alert(err); return; } refreshDetail(c, sid); }); };
+      redBtn.onclick = handler;
+      greenBtn.onclick = handler;
+    })(svcId, card);
     yellowBtn.className = 'detail-btn ' + (svc.public ? 'db-yellow' : 'db-off');
     (function(sid, c) { yellowBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); api('PUT', '/services/' + sid + '/public', {}, function(err) { if (err) { alert(err); return; } refreshDetail(c, sid); }); }; })(svcId, card);
-    greenBtn.className = 'detail-btn db-outline';
-    greenBtn.onclick = noop;
   } else {
     // Red: no access. Green: has access. Either button toggles the grant.
     var hasGrant = !!selectedUserGrants[svcId];
