@@ -239,6 +239,8 @@ function renderUsers(el) {
       selectedUserGrants = {};
       updateGrantDots();
     }
+  } else {
+    showTrafficLights();
   }
 }
 
@@ -319,26 +321,87 @@ function updateGrantDots() {
     var card = cards[i];
     var svcId = parseInt(card.getAttribute('data-svc-id'));
     var dot = card.querySelector('.grant-dot');
-    if (!dot) continue;
-    if (!selectedUserId) {
-      dot.style.display = 'none';
-      dot.onclick = null;
-      continue;
-    }
-    dot.style.display = 'block';
-    if (selectedUserGrants[svcId]) {
-      dot.className = 'grant-dot granted';
+    var tl = card.querySelector('.traffic-light');
+    if (selectedUserId) {
+      // User selected: show grant dots, hide traffic lights.
+      if (tl) tl.style.display = 'none';
+      if (dot) {
+        dot.style.display = 'block';
+        if (selectedUserGrants[svcId]) {
+          dot.className = 'grant-dot granted';
+        } else {
+          dot.className = 'grant-dot revoked';
+        }
+        (function(sid) {
+          dot.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleCardGrant(sid);
+          };
+        })(svcId);
+      }
     } else {
-      dot.className = 'grant-dot revoked';
+      // No user selected: hide grant dots, show traffic lights.
+      if (dot) { dot.style.display = 'none'; dot.onclick = null; }
     }
-    (function(sid) {
-      dot.onclick = function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleCardGrant(sid);
-      };
-    })(svcId);
   }
+  if (!selectedUserId) {
+    showTrafficLights();
+  }
+}
+
+function showTrafficLights() {
+  // Fetch service data and health, then update all traffic lights.
+  api('GET', '/services', null, function(err, services) {
+    if (err) return;
+    adminData.services = services;
+    api('GET', '/services/health', null, function(err2, health) {
+      var healthMap = err2 ? {} : (health || {});
+      var cards = document.querySelectorAll('.card[data-svc-id]');
+      for (var i = 0; i < cards.length; i++) {
+        var card = cards[i];
+        var svcId = parseInt(card.getAttribute('data-svc-id'));
+        var tl = card.querySelector('.traffic-light');
+        if (!tl) continue;
+        tl.style.display = 'flex';
+        // Find service data.
+        var svc = null;
+        for (var j = 0; j < adminData.services.length; j++) {
+          if (adminData.services[j].id === svcId) { svc = adminData.services[j]; break; }
+        }
+        var dots = tl.querySelectorAll('.tl-dot');
+        if (dots.length < 3 || !svc) continue;
+        // Top: enabled (gray) / disabled (red).
+        dots[0].className = 'tl-dot tl-enabled ' + (svc.enabled ? 'tl-off' : 'tl-red');
+        (function(sid) {
+          dots[0].onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            api('PUT', '/services/' + sid + '/enabled', {}, function(err3) {
+              if (err3) { alert(err3); return; }
+              showTrafficLights();
+            });
+          };
+        })(svcId);
+        // Middle: internal (gray) / public (yellow).
+        dots[1].className = 'tl-dot tl-public ' + (svc.public ? 'tl-yellow' : 'tl-off');
+        (function(sid) {
+          dots[1].onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            api('PUT', '/services/' + sid + '/public', {}, function(err3) {
+              if (err3) { alert(err3); return; }
+              showTrafficLights();
+            });
+          };
+        })(svcId);
+        // Bottom: health (green = alive, gray = down). Read-only.
+        var alive = healthMap[String(svcId)] === true;
+        dots[2].className = 'tl-dot tl-health ' + (alive ? 'tl-green' : 'tl-off');
+        dots[2].onclick = function(e) { e.preventDefault(); e.stopPropagation(); };
+      }
+    });
+  });
 }
 
 function toggleCardGrant(svcId) {
