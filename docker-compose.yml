@@ -39,7 +39,7 @@ services:
       # ForwardAuth middleware (referenced by other services as "noknok-auth")
       - "traefik.http.middlewares.noknok-auth.forwardauth.address=http://primal-noknok:4321/auth"
       - "traefik.http.middlewares.noknok-auth.forwardauth.trustForwardHeader=true"
-      - "traefik.http.middlewares.noknok-auth.forwardauth.authResponseHeaders=X-User-DID,X-User-Handle,X-User-Role"
+      - "traefik.http.middlewares.noknok-auth.forwardauth.authResponseHeaders=X-User-DID,X-User-Handle,X-User-Role,X-WEBAUTH-USER"
     dns:
       - 192.168.147.53
 
