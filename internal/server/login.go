@@ -237,11 +237,6 @@ func loginHTML(redirect, errMsg string, hasSession bool, svcs []database.Service
     min-height: 100vh;
     padding: 2rem;
   }
-  .header {
-    max-width: 800px;
-    margin: 0 auto 2rem;
-  }
-  .header h1 { font-size: 1.5rem; color: #f8fafc; }
   .login-card {
     background: #1e293b;
     border-radius: 12px;
@@ -293,11 +288,6 @@ func loginHTML(redirect, errMsg string, hasSession bool, svcs []database.Service
     font-weight: 600;
     color: #f8fafc;
     margin-bottom: 0.125rem;
-  }
-  .login-body .subtitle {
-    color: #94a3b8;
-    font-size: 0.8125rem;
-    margin-bottom: 1rem;
   }
   .error {
     background: #7f1d1d;
@@ -392,13 +382,11 @@ func loginHTML(redirect, errMsg string, hasSession bool, svcs []database.Service
 </style>
 </head>
 <body>
-<div class="header"><h1>nokNok</h1></div>
 <div class="login-card">
   ` + closeBtn + `
   <div class="login-icon">N</div>
   <div class="login-body">
     <h2>nokNok</h2>
-    <p class="subtitle">Sign in with your Bluesky account</p>
     ` + errorBlock + `
     <form method="POST" action="/login">
       ` + redirectInput + `
