@@ -22,7 +22,7 @@ func (s *Server) handleHealth(c echo.Context) error {
 func (s *Server) handleAuth(c echo.Context) error {
 	host := c.Request().Header.Get("X-Forwarded-Host")
 
-	// Check if the service is disabled — deny all access regardless of session.
+	// Check service status — disabled blocks all, public allows all.
 	if host != "" {
 		svc, _ := s.db.GetServiceByHost(c.Request().Context(), host)
 		if svc != nil && !svc.Enabled {
@@ -34,6 +34,9 @@ func (s *Server) handleAuth(c echo.Context) error {
 				return c.Redirect(http.StatusFound, s.cfg.PublicURL+"/")
 			}
 			return c.NoContent(http.StatusServiceUnavailable)
+		}
+		if svc != nil && svc.Public {
+			return c.NoContent(http.StatusOK)
 		}
 	}
 
