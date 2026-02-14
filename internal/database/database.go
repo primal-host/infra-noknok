@@ -37,13 +37,17 @@ func (db *DB) Close() {
 	db.Pool.Close()
 }
 
-// SeedOwner ensures the owner user exists with the given DID.
-func (db *DB) SeedOwner(ctx context.Context, did string) error {
+// SeedOwner ensures the owner user exists with the given DID and username.
+// On conflict, only overwrites username if the new value is non-empty.
+func (db *DB) SeedOwner(ctx context.Context, did, username string) error {
 	_, err := db.Pool.Exec(ctx, `
-		INSERT INTO users (did, handle, role)
-		VALUES ($1, '', 'owner')
-		ON CONFLICT (did) DO UPDATE SET role = 'owner', updated_at = now()
-	`, did)
+		INSERT INTO users (did, handle, role, username)
+		VALUES ($1, '', 'owner', $2)
+		ON CONFLICT (did) DO UPDATE SET
+			role = 'owner',
+			username = CASE WHEN $2 != '' THEN $2 ELSE users.username END,
+			updated_at = now()
+	`, did, username)
 	return err
 }
 
