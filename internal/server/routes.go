@@ -18,6 +18,7 @@ func (s *Server) registerRoutes() {
 	admin.GET("/users", s.handleListUsers)
 	admin.POST("/users", s.handleCreateUser)
 	admin.PUT("/users/:id/role", s.handleUpdateUserRole)
+	admin.PUT("/users/:id/username", s.handleUpdateUserUsername)
 	admin.DELETE("/users/:id", s.handleDeleteUser)
 	admin.GET("/services", s.handleListServicesAdmin)
 	admin.POST("/services", s.handleCreateService)
