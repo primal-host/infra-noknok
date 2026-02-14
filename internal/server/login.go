@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/primal-host/noknok/internal/config"
+	"github.com/primal-host/noknok/internal/database"
 	"github.com/primal-host/noknok/internal/session"
 )
 
@@ -18,7 +20,13 @@ func (s *Server) handleLoginPage(c echo.Context) error {
 	redirect := c.QueryParam("redirect")
 	errMsg := c.QueryParam("error")
 
-	return c.HTML(http.StatusOK, loginHTML(redirect, errMsg, s.hasValidSession(c)))
+	svcs, err := s.db.ListPublicServices(c.Request().Context())
+	if err != nil {
+		slog.Warn("login: failed to load public services", "error", err)
+		svcs = nil
+	}
+
+	return c.HTML(http.StatusOK, loginHTML(redirect, errMsg, s.hasValidSession(c), svcs))
 }
 
 // handleLogin processes the login form — starts the OAuth flow.
@@ -27,7 +35,7 @@ func (s *Server) handleLogin(c echo.Context) error {
 	redirect := c.FormValue("redirect")
 
 	if handle == "" {
-		return c.HTML(http.StatusOK, loginHTML(redirect, "Handle is required.", s.hasValidSession(c)))
+		return c.HTML(http.StatusOK, loginHTML(redirect, "Handle is required.", s.hasValidSession(c), nil))
 	}
 
 	// Default bare names to .bsky.social.
@@ -52,7 +60,7 @@ func (s *Server) handleLogin(c echo.Context) error {
 	authURL, err := s.oauth.StartLogin(c.Request().Context(), handle)
 	if err != nil {
 		slog.Warn("OAuth start failed", "handle", handle, "error", err)
-		return c.HTML(http.StatusOK, loginHTML(redirect, "Could not start login. Check your handle and try again.", s.hasValidSession(c)))
+		return c.HTML(http.StatusOK, loginHTML(redirect, "Could not start login. Check your handle and try again.", s.hasValidSession(c), nil))
 	}
 
 	return c.Redirect(http.StatusFound, authURL)
@@ -168,7 +176,7 @@ func (s *Server) hasValidSession(c echo.Context) bool {
 	return err == nil
 }
 
-func loginHTML(redirect, errMsg string, hasSession bool) string {
+func loginHTML(redirect, errMsg string, hasSession bool, svcs []database.Service) string {
 	errorBlock := ""
 	if errMsg != "" {
 		errorBlock = `<div class="error">` + errMsg + `</div>`
@@ -184,6 +192,36 @@ func loginHTML(redirect, errMsg string, hasSession bool) string {
 		closeBtn = `<a href="/" class="close-btn" title="Cancel">&times;</a>`
 	}
 
+	// Build public service cards.
+	serviceCards := ""
+	for _, svc := range svcs {
+		initial := "?"
+		if len(svc.Name) > 0 {
+			initial = string([]rune(svc.Name)[0])
+		}
+		faviconURL := strings.TrimRight(svc.URL, "/") + "/favicon.ico"
+		desc := svc.Description
+		if len([]rune(desc)) > 20 {
+			desc = string([]rune(desc)[:20]) + "..."
+		}
+		serviceCards += `
+      <a href="` + svc.URL + `" class="card svc-card" rel="noopener">
+        <div class="icon"><img src="` + faviconURL + `" onerror="this.style.display='none';this.nextSibling.style.display=''" style="width:28px;height:28px;border-radius:4px"><span style="display:none">` + initial + `</span></div>
+        <div class="info">
+          <h3>` + svc.Name + `</h3>
+          <p>` + desc + `</p>
+        </div>
+      </a>`
+	}
+
+	// Only show service grid section if there are public services.
+	serviceSection := ""
+	if serviceCards != "" {
+		serviceSection = fmt.Sprintf(`
+<div class="grid">%s
+</div>`, serviceCards)
+	}
+
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -197,17 +235,22 @@ func loginHTML(redirect, errMsg string, hasSession bool) string {
     background: #0f172a;
     color: #e2e8f0;
     min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: 2rem;
   }
-  .card {
+  .header {
+    max-width: 800px;
+    margin: 0 auto 2rem;
+  }
+  .header h1 { font-size: 1.5rem; color: #f8fafc; }
+  .login-card {
     background: #1e293b;
     border-radius: 12px;
-    padding: 2.5rem;
-    width: 100%;
-    max-width: 400px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    padding: 1.25rem;
+    max-width: 800px;
+    margin: 0 auto 1rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
     position: relative;
   }
   .close-btn {
@@ -231,16 +274,30 @@ func loginHTML(redirect, errMsg string, hasSession bool) string {
     text-decoration: none;
   }
   .close-btn:hover { color: #fff; border-color: #f97316; background: #f97316; }
-  h1 {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-bottom: 0.25rem;
-    color: #f8fafc;
+  .login-icon {
+    width: 48px;
+    height: 48px;
+    background: #bbbbff;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
   }
-  .subtitle {
+  .login-body { flex: 1; min-width: 0; }
+  .login-body h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #f8fafc;
+    margin-bottom: 0.125rem;
+  }
+  .login-body .subtitle {
     color: #94a3b8;
-    font-size: 0.875rem;
-    margin-bottom: 1.5rem;
+    font-size: 0.8125rem;
+    margin-bottom: 1rem;
   }
   .error {
     background: #7f1d1d;
@@ -250,13 +307,6 @@ func loginHTML(redirect, errMsg string, hasSession bool) string {
     font-size: 0.875rem;
     margin-bottom: 1rem;
   }
-  label {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: #cbd5e1;
-    margin-bottom: 0.375rem;
-  }
   input[type="text"] {
     width: 100%;
     padding: 0.625rem 0.75rem;
@@ -265,16 +315,12 @@ func loginHTML(redirect, errMsg string, hasSession bool) string {
     border-radius: 8px;
     color: #f8fafc;
     font-size: 0.9375rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
     outline: none;
     transition: border-color 0.15s;
   }
-  input[type="text"]:focus {
-    border-color: #3b82f6;
-  }
-  input[type="text"]::placeholder {
-    color: #475569;
-  }
+  input[type="text"]:focus { border-color: #3b82f6; }
+  input[type="text"]::placeholder { color: #475569; }
   button {
     width: 100%;
     padding: 0.625rem;
@@ -288,31 +334,82 @@ func loginHTML(redirect, errMsg string, hasSession bool) string {
     transition: background 0.15s;
   }
   button:hover { background: #2563eb; }
-  .footer {
+  .login-footer {
     text-align: center;
-    margin-top: 1.5rem;
+    margin-top: 0.75rem;
     font-size: 0.75rem;
     color: #475569;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  .svc-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 1.25rem;
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .svc-card:hover { background: #334155; transform: translateY(-2px); }
+  .icon {
+    width: 48px;
+    height: 48px;
+    background: #bbbbff;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .info { flex: 1; min-width: 0; }
+  .info h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #f8fafc;
+    margin-bottom: 0.125rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .info p {
+    font-size: 0.8125rem;
+    color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>
 </head>
 <body>
-<div class="card">
+<div class="header"><h1>nokNok</h1></div>
+<div class="login-card">
   ` + closeBtn + `
-  <h1>nokNok</h1>
-  <p class="subtitle">Sign in with your Bluesky account</p>
-  ` + errorBlock + `
-  <form method="POST" action="/login">
-    ` + redirectInput + `
-    <label for="handle">Handle</label>
-    <input type="text" id="handle" name="handle" placeholder="you.bsky.social" autocomplete="username" autofocus required>
-    <button type="submit">Sign in with Bluesky</button>
-  </form>
-  <p class="footer">You will be redirected to authorize at your provider</p>
+  <div class="login-icon">N</div>
+  <div class="login-body">
+    <h2>nokNok</h2>
+    <p class="subtitle">Sign in with your Bluesky account</p>
+    ` + errorBlock + `
+    <form method="POST" action="/login">
+      ` + redirectInput + `
+      <input type="text" id="handle" name="handle" placeholder="you.bsky.social" autocomplete="username" autofocus required>
+      <button type="submit">Sign in with Bluesky</button>
+    </form>
+    <p class="login-footer">You will be redirected to authorize at your provider</p>
+  </div>
 </div>
+` + serviceSection + `
 <script>
-// If user already has a session and the portal is open in another tab,
-// this tab is likely a forwardAuth redirect — try to close it.
 (function() {
   if (typeof BroadcastChannel === 'undefined') return;
   var ch = new BroadcastChannel('noknok_portal');
