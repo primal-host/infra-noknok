@@ -41,7 +41,7 @@ Tables: `sessions`, `users`, `services`, `grants`, `oauth_requests`, `oauth_sess
 
 - `sessions` — `group_id` column links multiple identities per browser; `token` is 64-char hex; sessions expire per `SESSION_TTL`
 - `users` — role column: `owner`, `admin`, `user`
-- `services` — seeded from `services.json` on startup (ON CONFLICT slug DO UPDATE admin_role); `admin_role` column (default 'admin') sets role for owners/admins; `enabled` (bool, default true) and `public` (bool, default false) columns for service status
+- `services` — seeded from `services.json` on startup (ON CONFLICT slug DO UPDATE all fields); `admin_role` column (default 'admin') sets role for owners/admins; `enabled` (bool, default true) and `public` (bool, default false) columns for service status
 - `grants` — user×service access matrix (CASCADE on delete); `role` column (free-text, default 'user') for per-service role granularity
 
 ## Docker
