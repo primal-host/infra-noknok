@@ -430,34 +430,34 @@ function buildDetail(card, svcId) {
   panel.className = 'detail-panel';
   var inner = document.createElement('div');
   inner.className = 'detail-inner';
-  // Red button: enabled/disabled.
   var redBtn = document.createElement('button');
-  redBtn.className = 'detail-btn ' + (svc.enabled ? 'db-off' : 'db-red');
-  if (isAdmin) {
-    (function(sid, c) { redBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); api('PUT', '/services/' + sid + '/enabled', {}, function(err) { if (err) { alert(err); return; } refreshDetail(c, sid); }); }; })(svcId, card);
-  } else {
-    redBtn.className += ' db-readonly';
-    redBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); };
-  }
-  // Yellow button: public/internal.
   var yellowBtn = document.createElement('button');
-  yellowBtn.className = 'detail-btn ' + (svc.public ? 'db-yellow' : 'db-off');
-  if (isAdmin) {
-    (function(sid, c) { yellowBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); api('PUT', '/services/' + sid + '/public', {}, function(err) { if (err) { alert(err); return; } refreshDetail(c, sid); }); }; })(svcId, card);
-  } else {
-    yellowBtn.className += ' db-readonly';
-    yellowBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); };
-  }
-  // Green button: health (admin) or access (user).
   var greenBtn = document.createElement('button');
+  var noop = function(e) { e.stopPropagation(); e.preventDefault(); };
   if (isAdmin) {
-    var alive = lastHealthData[String(svcId)] === true;
-    greenBtn.className = 'detail-btn ' + (alive ? 'db-green' : 'db-off') + ' db-readonly';
-    greenBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); };
+    // Red: toggle enabled/disabled. Yellow: toggle public/internal. Green: outline spacer.
+    redBtn.className = 'detail-btn ' + (svc.enabled ? 'db-off' : 'db-red');
+    (function(sid, c) { redBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); api('PUT', '/services/' + sid + '/enabled', {}, function(err) { if (err) { alert(err); return; } refreshDetail(c, sid); }); }; })(svcId, card);
+    yellowBtn.className = 'detail-btn ' + (svc.public ? 'db-yellow' : 'db-off');
+    (function(sid, c) { yellowBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); api('PUT', '/services/' + sid + '/public', {}, function(err) { if (err) { alert(err); return; } refreshDetail(c, sid); }); }; })(svcId, card);
+    greenBtn.className = 'detail-btn db-outline';
+    greenBtn.onclick = noop;
   } else {
+    // Red: no access (clickable to grant). Yellow: outline spacer. Green: has access (clickable to revoke).
     var hasGrant = !!selectedUserGrants[svcId];
-    greenBtn.className = 'detail-btn ' + (hasGrant ? 'db-green' : 'db-off');
-    (function(sid, c) { greenBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); toggleCardGrant(sid, c); }; })(svcId, card);
+    if (hasGrant) {
+      redBtn.className = 'detail-btn db-outline';
+      redBtn.onclick = noop;
+      greenBtn.className = 'detail-btn db-green';
+      (function(sid, c) { greenBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); toggleCardGrant(sid, c); }; })(svcId, card);
+    } else {
+      redBtn.className = 'detail-btn db-red';
+      (function(sid, c) { redBtn.onclick = function(e) { e.stopPropagation(); e.preventDefault(); toggleCardGrant(sid, c); }; })(svcId, card);
+      greenBtn.className = 'detail-btn db-outline';
+      greenBtn.onclick = noop;
+    }
+    yellowBtn.className = 'detail-btn db-outline';
+    yellowBtn.onclick = noop;
   }
   inner.appendChild(redBtn);
   inner.appendChild(yellowBtn);

@@ -322,6 +322,8 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
   .detail-btn.db-green { background: #22c55e; }
   .detail-btn.db-readonly { cursor: default; opacity: 0.5; }
   .detail-btn.db-readonly:hover { opacity: 0.5; }
+  .detail-btn.db-outline { background: transparent; border: 1.5px solid #475569; cursor: default; }
+  .detail-btn.db-outline:hover { opacity: 1; }
   .icon {
     width: 48px;
     height: 48px;
