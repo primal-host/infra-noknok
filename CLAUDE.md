@@ -8,8 +8,8 @@ AT Protocol authentication gateway for Traefik forwardAuth.
 - `internal/config/` — Environment + file-based config
 - `internal/database/` — pgx pool, schema bootstrap, CRUD queries
 - `internal/atproto/` — OAuth client wrapper + Postgres auth store (indigo SDK)
-- `internal/session/` — Server-side session management + cookies
-- `internal/server/` — Echo HTTP server, routes, handlers, admin panel
+- `internal/session/` — Server-side session management + cookies (group support)
+- `internal/server/` — Echo HTTP server, routes, handlers, admin panel, identity management
 
 ## Build & Run
 
@@ -24,11 +24,14 @@ go vet ./...
 ## Conventions
 
 - Go module: `github.com/primal-host/noknok`
+- Display name: nokNok (camelCase)
 - HTTP framework: Echo v4
 - Database: pgx v5 on infra-postgres, database `noknok`
 - Container name: `primal-noknok`
-- Schema auto-bootstraps via `CREATE TABLE IF NOT EXISTS`
+- Schema auto-bootstraps via `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
 - Config uses env vars with `_FILE` suffix support for Docker secrets
+- All inline JS must be ES5 compatible (iPad Safari) — no async/await, fetch, const/let, arrow functions; use XMLHttpRequest, var, function expressions
+- Go backtick strings injected into JS string literals must be single-line (newlines break the `<script>` block)
 
 ## Database
 
@@ -36,6 +39,7 @@ Postgres on `infra-postgres:5432` (host port 5433), database `noknok`, user `dba
 
 Tables: `sessions`, `users`, `services`, `grants`, `oauth_requests`, `oauth_sessions`.
 
+- `sessions` — `group_id` column links multiple identities per browser; `token` is 64-char hex; sessions expire per `SESSION_TTL`
 - `users` — role column: `owner`, `admin`, `user`
 - `services` — seeded from `services.json` on startup (ON CONFLICT slug DO UPDATE admin_role); `admin_role` column (default 'admin') sets role for owners/admins
 - `grants` — user×service access matrix (CASCADE on delete); `role` column (free-text, default 'user') for per-service role granularity
@@ -76,21 +80,25 @@ All `primal.host` infrastructure services use `noknok-auth@docker` middleware:
 9. DID verified against users table → noknok session created → cookie set
 10. Redirect back to original service → forwardAuth passes with X-User-DID, X-User-Handle, X-User-Role headers
 
+### ForwardAuth Grant Enforcement
+
+The `/auth` endpoint enforces per-service access:
+
+- **Owner/Admin** → 200 OK for all services (full access)
+- **Regular user with grant** → 200 OK with `X-User-Role` header
+- **Regular user without grant** → browser: 302 redirect to portal; non-browser: 403
+- **No valid session + browser** → 302 redirect to login
+- **No valid session + non-browser** (git, curl) → 401 so credential helpers can retry
+- **Authorization header present** → 200 passthrough (lets backend validate tokens/PATs)
+
 ### ForwardAuth Response Headers
 
 | Header | Description |
 |--------|-------------|
 | `X-User-DID` | User's AT Protocol DID |
 | `X-User-Handle` | User's Bluesky handle |
+| `X-WEBAUTH-USER` | User's username (for Gitea web auth) |
 | `X-User-Role` | Per-service role (from grants table or service admin_role for owners/admins) |
-
-### Non-Browser Client Handling
-
-The `/auth` endpoint detects client type via the `Accept` header:
-
-- **Browser** (Accept contains `text/html`): 302 redirect to login page
-- **Non-browser** (git, curl, API clients): 401 so credential helpers can retry
-- **Authorization header present**: 200 passthrough (lets backend validate tokens/PATs)
 
 ### OAuth Endpoints
 
@@ -98,9 +106,45 @@ The `/auth` endpoint detects client type via the `Accept` header:
 - `GET /oauth/jwks.json` — Public JWK Set for client assertion
 - `GET /oauth/callback` — OAuth authorization callback
 
+## Multi-Identity Sessions
+
+Multiple Bluesky identities per browser via session groups (`group_id` UUID).
+
+- First login generates a new group; subsequent logins inherit the group from the existing cookie
+- OAuth callback detects duplicate DID in group and switches instead of creating a new session
+- Each session has independent TTL
+
+### Identity Routes
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | /switch | Switch active identity (form: `id`) |
+| POST | /logout/one | Log out one identity (form: `id`) |
+| POST | /logout | Log out all identities (destroy group) |
+| GET | /api/identities | List identities in group (JSON, never exposes tokens) |
+
+### Portal UI
+
+- Identity dropdown in header: active identity, switch to others, "New sign-in", admin link (owner/admin only), per-identity logout, log out all
+- Service cards opened via `window.open()` for tab tracking
+- Login page shows circled X close button (orange hover) when user already has a session
+
+### Tab Management
+
+- **BroadcastChannel `noknok_portal`**: duplicate portal tabs (from forwardAuth redirects) detect the primary and auto-close, sending a `focus` message first
+- **Grant revocation**: closing tracked service tabs when grants are toggled off via admin dots
+- **Logout**: all tracked service tabs closed on form submit
+- **Auto-reload**: portal reloads on tab focus after >5s hidden to refresh grants/cards
+
 ## Admin Panel
 
-Accessible by clicking the username in the portal header (owner/admin only).
+Inline card on portal page (not overlay — overlays broken on iPad Safari). Opened via `/?admin` query param. Server-side tab switching via `?admin&tab=X` (plain `<a>` links, no JS tab switching).
+
+### Tabs
+
+- **Users**: radio-select users; selecting shows grant dots on service cards (green=granted, gray=revoked, clickable to toggle); single Delete button enabled on selection; add-user form requires all fields (handle, username, role) before Add enables
+- **Services**: add-service form requires name, slug, URL before Add enables; inline admin_role editing; single Delete button per row
+- **Access**: checkbox matrix of users × services with per-grant role editing
 
 ### Role Hierarchy
 
@@ -120,7 +164,7 @@ Roles are resolved per-service via the `X-User-Role` header:
 
 - **Owner/Admin** in noknok → gets the service's `admin_role` value (e.g., "admin")
 - **Regular user** with a grant → gets the grant's `role` value (free-text, e.g., "user", "viewer", "editor")
-- **No grant** → no `X-User-Role` header set
+- **No grant** → access denied (403 or redirect to portal)
 
 Backend services can use `X-User-Role` for authorization (e.g., Avalauncher checks for "admin" role).
 
@@ -133,6 +177,7 @@ All under `/admin/api`, protected by `requireAdmin` middleware:
 | GET | /users | List all users |
 | POST | /users | Create user (resolve handle → DID) |
 | PUT | /users/:id/role | Change user role |
+| PUT | /users/:id/username | Change username |
 | DELETE | /users/:id | Delete user |
 | GET | /services | List all services |
 | POST | /services | Create service |
