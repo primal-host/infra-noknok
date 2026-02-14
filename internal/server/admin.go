@@ -212,12 +212,28 @@ function renderUsers(el) {
   }
   html += '</tbody></table>';
   html += '<div class="admin-form">' +
-    '<input class="admin-input" id="add-handle" placeholder="handle" style="flex:1;min-width:150px">' +
-    '<input class="admin-input" id="add-username" placeholder="username" style="width:90px">' +
-    '<select class="admin-select" id="add-role"><option value="user">User</option>` + ownerOnly + `</select>' +
-    '<button class="admin-btn" onclick="addUser()">Add</button></div>';
+    '<input class="admin-input" id="add-handle" placeholder="handle" style="flex:1;min-width:150px" oninput="checkAddUser()">' +
+    '<input class="admin-input" id="add-username" placeholder="username" style="width:90px" oninput="checkAddUser()">' +
+    '<select class="admin-select" id="add-role" onchange="checkAddUser()"><option value="" disabled selected>Role</option><option value="user">User</option>` + ownerOnly + `</select>' +
+    '<button class="admin-btn" id="add-user-btn" onclick="addUser()" disabled style="opacity:0.4;cursor:default">Add</button></div>';
   html += '<div id="users-msg"></div>';
   el.innerHTML = html;
+}
+
+function checkAddUser() {
+  var h = document.getElementById('add-handle').value.trim();
+  var u = document.getElementById('add-username').value.trim();
+  var r = document.getElementById('add-role').value;
+  var btn = document.getElementById('add-user-btn');
+  if (h && u && r) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '0.4';
+    btn.style.cursor = 'default';
+  }
 }
 
 function addUser() {
@@ -225,11 +241,13 @@ function addUser() {
   var username = document.getElementById('add-username').value.trim();
   var role = document.getElementById('add-role').value;
   var msg = document.getElementById('users-msg');
-  if (!handle) return;
+  if (!handle || !username || !role) return;
   api('POST', '/users', { handle: handle, role: role, username: username }, function(err) {
     if (err) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = err; return; }
     document.getElementById('add-handle').value = '';
     document.getElementById('add-username').value = '';
+    document.getElementById('add-role').value = '';
+    checkAddUser();
     msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'User added';
     loadTab('users');
   });
