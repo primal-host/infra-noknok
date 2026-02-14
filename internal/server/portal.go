@@ -77,6 +77,10 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
 		if len(svc.Name) > 0 {
 			initial = string([]rune(svc.Name)[0])
 		}
+		disabledDot := ""
+		if !svc.Enabled {
+			disabledDot = `<div class="disabled-dot"></div>`
+		}
 		cards += `
       <a href="` + svc.URL + `" target="` + svc.Slug + `" rel="noopener" class="card" data-svc-id="` + fmt.Sprintf("%d", svc.ID) + `" onclick="return openService(this)">
         <div class="icon">` + initial + `</div>
@@ -84,6 +88,7 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
           <h3>` + svc.Name + `</h3>
           <p>` + svc.Description + `</p>
         </div>
+        ` + disabledDot + `
         <div class="grant-dot" style="display:none"></div>
         <div class="traffic-light" style="display:none"><div class="tl-dot tl-enabled"></div><div class="tl-dot tl-public"></div><div class="tl-dot tl-health"></div></div>
       </a>`
@@ -261,6 +266,15 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
     position: relative;
   }
   .card:hover { background: #334155; transform: translateY(-2px); }
+  .disabled-dot {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 4px;
+    background: #ef4444;
+  }
   .grant-dot {
     position: absolute;
     top: 0.5rem;
