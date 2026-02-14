@@ -53,8 +53,12 @@ func (s *Server) handlePortal(c echo.Context) error {
 		group = []session.Session{*sess}
 	}
 
-	// Run parallel health checks for traffic light indicators.
-	healthMap := s.checkServicesHealth(svcs)
+	// Use cached health data from background poller.
+	// Falls back to inline checks if cache is empty (first few seconds after startup).
+	healthMap := s.cachedHealth()
+	if len(healthMap) == 0 {
+		healthMap = s.checkServicesHealth(svcs)
+	}
 
 	// Check if ?admin is in the URL (works with ?admin, ?admin=, ?admin=1).
 	_, adminOpen := c.QueryParams()["admin"]
@@ -466,7 +470,67 @@ document.addEventListener('keydown', function(e) {
     }
   });
 })();
+// Poll health status every 60 seconds and update traffic lights.
+(function() {
+  function refreshStatus() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/health', true);
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== 4 || xhr.status !== 200) return;
+      try {
+        var data = JSON.parse(xhr.responseText);
+        var ap = document.getElementById('admin-panel');
+        if (ap && ap.style.display !== 'none') return;
+        var cards = document.querySelectorAll('.card[data-svc-id]');
+        for (var i = 0; i < cards.length; i++) {
+          var card = cards[i];
+          var svcId = card.getAttribute('data-svc-id');
+          var status = data[svcId];
+          if (!status) continue;
+          card.setAttribute('data-svc-status', status);
+          var dots = card.querySelectorAll('.tl-dot');
+          if (dots.length < 3) continue;
+          dots[0].className = 'tl-dot tl-enabled ' + (status === 'red' ? 'tl-red' : 'tl-off');
+          dots[1].className = 'tl-dot tl-public ' + (status === 'yellow' ? 'tl-yellow' : 'tl-off');
+          dots[2].className = 'tl-dot tl-health ' + (status === 'green' ? 'tl-green' : 'tl-off');
+        }
+      } catch(e) {}
+    };
+    xhr.send();
+  }
+  setInterval(refreshStatus, 60000);
+})();
 </script>
 </body>
 </html>`
+}
+
+// handleHealthStatus returns cached service health as a status map (red/yellow/green).
+func (s *Server) handleHealthStatus(c echo.Context) error {
+	cookie, err := c.Cookie(session.CookieName())
+	if err != nil || cookie.Value == "" {
+		return c.NoContent(http.StatusUnauthorized)
+	}
+	_, err = s.sess.Validate(c.Request().Context(), cookie.Value)
+	if err != nil {
+		return c.NoContent(http.StatusUnauthorized)
+	}
+
+	svcs, err := s.db.ListServices(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed"})
+	}
+	health := s.cachedHealth()
+
+	result := make(map[string]string)
+	for _, svc := range svcs {
+		status := "green"
+		if !svc.Enabled {
+			status = "red"
+		} else if !health[svc.ID] {
+			status = "yellow"
+		}
+		result[fmt.Sprintf("%d", svc.ID)] = status
+	}
+	return c.JSON(http.StatusOK, result)
 }
