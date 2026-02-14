@@ -71,6 +71,14 @@ func (s *Server) handlePortal(c echo.Context) error {
 	return c.HTML(http.StatusOK, portalHTML(sess, group, svcs, healthMap, isAdmin, user.Role, adminOpen, adminTab))
 }
 
+func truncate(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "..."
+}
+
 type identityInfo struct {
 	ID     int64
 	Handle string
@@ -103,7 +111,7 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
         <div class="icon">` + initial + `</div>
         <div class="info">
           <h3>` + svc.Name + `</h3>
-          <p>` + svc.Description + `</p>
+          <p>` + truncate(svc.Description, 20) + `</p>
         </div>
         <div class="traffic-light"><div class="tl-dot tl-enabled ` + dot1Class + `"></div><div class="tl-dot tl-public ` + dot2Class + `"></div><div class="tl-dot tl-health ` + dot3Class + `"></div></div>
       </a>`
