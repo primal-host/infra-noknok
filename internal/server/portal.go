@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/primal-host/noknok/internal/database"
@@ -106,9 +107,10 @@ func portalHTML(active *session.Session, group []session.Session, svcs []databas
 			dot2Class = "tl-yellow"
 			dot3Class = "tl-off"
 		}
+		faviconURL := strings.TrimRight(svc.URL, "/") + "/favicon.ico"
 		cards += `
       <a href="` + svc.URL + `" target="` + svc.Slug + `" rel="noopener" class="card" data-svc-id="` + fmt.Sprintf("%d", svc.ID) + `" data-svc-status="` + status + `" onclick="return openService(this)">
-        <div class="icon">` + initial + `</div>
+        <div class="icon"><img src="` + faviconURL + `" onerror="this.style.display='none';this.nextSibling.style.display=''" style="width:28px;height:28px;border-radius:4px"><span style="display:none">` + initial + `</span></div>
         <div class="info">
           <h3>` + svc.Name + `</h3>
           <p>` + truncate(svc.Description, 20) + `</p>
