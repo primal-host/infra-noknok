@@ -227,7 +227,7 @@ func loginHTML(redirect, errMsg string, hasSession bool, svcs []database.Service
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nokNok — Sign In</title>
+<title>sign in</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
