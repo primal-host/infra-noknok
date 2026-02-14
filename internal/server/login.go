@@ -243,9 +243,6 @@ func loginHTML(redirect, errMsg string, hasSession bool, svcs []database.Service
     padding: 1.25rem;
     max-width: 800px;
     margin: 0 auto 1rem;
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
     position: relative;
   }
   .close-btn {
@@ -269,26 +266,6 @@ func loginHTML(redirect, errMsg string, hasSession bool, svcs []database.Service
     text-decoration: none;
   }
   .close-btn:hover { color: #fff; border-color: #f97316; background: #f97316; }
-  .login-icon {
-    width: 48px;
-    height: 48px;
-    background: #bbbbff;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #fff;
-    flex-shrink: 0;
-  }
-  .login-body { flex: 1; min-width: 0; }
-  .login-body h2 {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #f8fafc;
-    margin-bottom: 0.125rem;
-  }
   .error {
     background: #7f1d1d;
     color: #fca5a5;
@@ -384,17 +361,13 @@ func loginHTML(redirect, errMsg string, hasSession bool, svcs []database.Service
 <body>
 <div class="login-card">
   ` + closeBtn + `
-  <div class="login-icon">N</div>
-  <div class="login-body">
-    <h2>nokNok</h2>
-    ` + errorBlock + `
-    <form method="POST" action="/login">
-      ` + redirectInput + `
-      <input type="text" id="handle" name="handle" placeholder="you.bsky.social" autocomplete="username" autofocus required>
-      <button type="submit">Sign in with Bluesky</button>
-    </form>
-    <p class="login-footer">You will be redirected to authorize at your provider</p>
-  </div>
+  ` + errorBlock + `
+  <form method="POST" action="/login">
+    ` + redirectInput + `
+    <input type="text" id="handle" name="handle" placeholder="you.bsky.social" autocomplete="username" autofocus required>
+    <button type="submit">Sign in with Bluesky</button>
+  </form>
+  <p class="login-footer">You will be redirected to authorize at your provider</p>
 </div>
 ` + serviceSection + `
 <script>
