@@ -10,7 +10,7 @@ func adminPanelHTML(role string) string {
 
 	return `
 <!-- Admin Modal -->
-<div id="admin-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center">
+<div id="admin-overlay" style="display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center">
 <div style="background:#1e293b;border-radius:12px;width:100%;max-width:720px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.4)">
   <div style="display:flex;justify-content:space-between;align-items:center;padding:1.25rem 1.5rem;border-bottom:1px solid #334155">
     <h2 style="font-size:1.125rem;font-weight:600;color:#f8fafc;margin:0">Admin</h2>
