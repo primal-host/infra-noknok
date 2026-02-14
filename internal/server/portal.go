@@ -478,21 +478,22 @@ document.addEventListener('keydown', function(e) {
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== 4 || xhr.status !== 200) return;
       try {
-        var data = JSON.parse(xhr.responseText);
+        var down = JSON.parse(xhr.responseText);
         var ap = document.getElementById('admin-panel');
         if (ap && ap.style.display !== 'none') return;
+        var downMap = {};
+        for (var i = 0; i < down.length; i++) downMap[down[i]] = true;
         var cards = document.querySelectorAll('.card[data-svc-id]');
         for (var i = 0; i < cards.length; i++) {
           var card = cards[i];
-          var svcId = card.getAttribute('data-svc-id');
-          var status = data[svcId];
-          if (!status) continue;
-          card.setAttribute('data-svc-status', status);
+          if (card.getAttribute('data-svc-status') === 'red') continue;
+          var isDown = !!downMap[card.getAttribute('data-svc-id')];
+          card.setAttribute('data-svc-status', isDown ? 'yellow' : 'green');
           var dots = card.querySelectorAll('.tl-dot');
           if (dots.length < 3) continue;
-          dots[0].className = 'tl-dot tl-enabled ' + (status === 'red' ? 'tl-red' : 'tl-off');
-          dots[1].className = 'tl-dot tl-public ' + (status === 'yellow' ? 'tl-yellow' : 'tl-off');
-          dots[2].className = 'tl-dot tl-health ' + (status === 'green' ? 'tl-green' : 'tl-off');
+          dots[0].className = 'tl-dot tl-enabled tl-off';
+          dots[1].className = 'tl-dot tl-public ' + (isDown ? 'tl-yellow' : 'tl-off');
+          dots[2].className = 'tl-dot tl-health ' + (isDown ? 'tl-off' : 'tl-green');
         }
       } catch(e) {}
     };
@@ -505,7 +506,7 @@ document.addEventListener('keydown', function(e) {
 </html>`
 }
 
-// handleHealthStatus returns cached service health as a status map (red/yellow/green).
+// handleHealthStatus returns an array of service IDs that are unhealthy.
 func (s *Server) handleHealthStatus(c echo.Context) error {
 	cookie, err := c.Cookie(session.CookieName())
 	if err != nil || cookie.Value == "" {
@@ -516,21 +517,12 @@ func (s *Server) handleHealthStatus(c echo.Context) error {
 		return c.NoContent(http.StatusUnauthorized)
 	}
 
-	svcs, err := s.db.ListServices(c.Request().Context())
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed"})
-	}
 	health := s.cachedHealth()
-
-	result := make(map[string]string)
-	for _, svc := range svcs {
-		status := "green"
-		if !svc.Enabled {
-			status = "red"
-		} else if !health[svc.ID] {
-			status = "yellow"
+	down := make([]int64, 0)
+	for id, alive := range health {
+		if !alive {
+			down = append(down, id)
 		}
-		result[fmt.Sprintf("%d", svc.ID)] = status
 	}
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(http.StatusOK, down)
 }
