@@ -122,9 +122,10 @@ function esc(s) {
 }
 
 function renderUsers(el) {
-  let html = '<table class="admin-tbl"><thead><tr><th>Handle</th><th>Role</th><th>DID</th><th></th></tr></thead><tbody>';
+  let html = '<table class="admin-tbl"><thead><tr><th>Handle</th><th>Username</th><th>Role</th><th>DID</th><th></th></tr></thead><tbody>';
   for (const u of adminData.users) {
     const canChangeRole = ROLE === 'owner';
+    const usernameCell = '<input class="admin-input" style="width:90px;font-size:0.75rem" value="' + esc(u.username || '') + '" onchange="updateUsername(' + u.id + ',this.value)">';
     const roleCell = canChangeRole
       ? '<select class="admin-select" onchange="updateRole(' + u.id + ',this.value)">' +
         '<option value="user"' + (u.role==='user'?' selected':'') + '>User</option>' +
@@ -132,11 +133,12 @@ function renderUsers(el) {
         '<option value="owner"' + (u.role==='owner'?' selected':'') + '>Owner</option></select>'
       : esc(u.role);
     const del = '<button class="admin-btn-danger" onclick="deleteUser(' + u.id + ')">Delete</button>';
-    html += '<tr><td>' + esc(u.handle || '(no handle)') + '</td><td>' + roleCell + '</td><td style="font-size:0.75rem;color:#64748b;max-width:200px;overflow:hidden;text-overflow:ellipsis">' + esc(u.did) + '</td><td>' + del + '</td></tr>';
+    html += '<tr><td>' + esc(u.handle || '(no handle)') + '</td><td>' + usernameCell + '</td><td>' + roleCell + '</td><td style="font-size:0.75rem;color:#64748b;max-width:200px;overflow:hidden;text-overflow:ellipsis">' + esc(u.did) + '</td><td>' + del + '</td></tr>';
   }
   html += '</tbody></table>';
   html += '<div class="admin-form">' +
     '<input class="admin-input" id="add-handle" placeholder="handle" style="flex:1;min-width:150px">' +
+    '<input class="admin-input" id="add-username" placeholder="username" style="width:90px">' +
     '<select class="admin-select" id="add-role"><option value="user">User</option>` + ownerOnly + `</select>' +
     '<button class="admin-btn" onclick="addUser()">Add</button></div>';
   html += '<div id="users-msg"></div>';
@@ -145,16 +147,30 @@ function renderUsers(el) {
 
 async function addUser() {
   const handle = document.getElementById('add-handle').value.trim();
+  const username = document.getElementById('add-username').value.trim();
   const role = document.getElementById('add-role').value;
   const msg = document.getElementById('users-msg');
   if (!handle) return;
   try {
-    await api('POST', '/users', { handle, role });
+    await api('POST', '/users', { handle, role, username });
     document.getElementById('add-handle').value = '';
+    document.getElementById('add-username').value = '';
     msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'User added';
     loadTab('users');
   } catch (e) {
     msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
+  }
+}
+
+async function updateUsername(id, username) {
+  const msg = document.getElementById('users-msg');
+  try {
+    await api('PUT', '/users/' + id + '/username', { username });
+    msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Username updated';
+    setTimeout(() => { msg.className = ''; msg.textContent = ''; }, 1500);
+  } catch (e) {
+    msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
+    loadTab('users');
   }
 }
 
