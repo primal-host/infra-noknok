@@ -134,37 +134,60 @@ if (document.readyState === 'loading') {
 </style>
 
 <script>
-const ROLE = '` + role + `';
-let currentTab = 'users';
-let adminData = { users: [], services: [], grants: [] };
+var ROLE = '` + role + `';
+var adminData = { users: [], services: [], grants: [] };
 
-async function api(method, path, body) {
-  var opts = { method: method, headers: { 'Content-Type': 'application/json' } };
-  if (body) opts.body = JSON.stringify(body);
-  var r = await fetch('/admin/api' + path, opts);
-  if (r.status === 204) return null;
-  var data = await r.json();
-  if (!r.ok) throw new Error(data.error || 'request failed');
-  return data;
+function api(method, path, body, callback) {
+  var xhr = new XMLHttpRequest();
+  xhr.open(method, '/admin/api' + path, true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    if (xhr.status === 204) { callback(null, null); return; }
+    try {
+      var data = JSON.parse(xhr.responseText);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        callback(null, data);
+      } else {
+        callback(data.error || 'request failed');
+      }
+    } catch (e) {
+      callback('request failed');
+    }
+  };
+  xhr.send(body ? JSON.stringify(body) : null);
 }
 
-async function loadTab(tab) {
+function loadTab(tab) {
   var el = document.getElementById('admin-content');
-  try {
-    if (tab === 'users') {
-      adminData.users = await api('GET', '/users');
+  if (!el) return;
+  el.innerHTML = '<div style="color:#64748b;padding:1rem">Loading...</div>';
+  if (tab === 'users') {
+    api('GET', '/users', null, function(err, data) {
+      if (err) { el.innerHTML = '<div class="admin-msg admin-msg-err">' + esc(err) + '</div>'; return; }
+      adminData.users = data;
       renderUsers(el);
-    } else if (tab === 'services') {
-      adminData.services = await api('GET', '/services');
+    });
+  } else if (tab === 'services') {
+    api('GET', '/services', null, function(err, data) {
+      if (err) { el.innerHTML = '<div class="admin-msg admin-msg-err">' + esc(err) + '</div>'; return; }
+      adminData.services = data;
       renderServices(el);
-    } else if (tab === 'access') {
-      adminData.users = await api('GET', '/users');
-      adminData.services = await api('GET', '/services');
-      adminData.grants = await api('GET', '/grants');
-      renderAccess(el);
-    }
-  } catch (e) {
-    el.innerHTML = '<div class="admin-msg admin-msg-err">' + esc(e.message) + '</div>';
+    });
+  } else if (tab === 'access') {
+    api('GET', '/users', null, function(err1, users) {
+      if (err1) { el.innerHTML = '<div class="admin-msg admin-msg-err">' + esc(err1) + '</div>'; return; }
+      adminData.users = users;
+      api('GET', '/services', null, function(err2, services) {
+        if (err2) { el.innerHTML = '<div class="admin-msg admin-msg-err">' + esc(err2) + '</div>'; return; }
+        adminData.services = services;
+        api('GET', '/grants', null, function(err3, grants) {
+          if (err3) { el.innerHTML = '<div class="admin-msg admin-msg-err">' + esc(err3) + '</div>'; return; }
+          adminData.grants = grants;
+          renderAccess(el);
+        });
+      });
+    });
   }
 }
 
@@ -199,50 +222,42 @@ function renderUsers(el) {
   el.innerHTML = html;
 }
 
-async function addUser() {
+function addUser() {
   var handle = document.getElementById('add-handle').value.trim();
   var username = document.getElementById('add-username').value.trim();
   var role = document.getElementById('add-role').value;
   var msg = document.getElementById('users-msg');
   if (!handle) return;
-  try {
-    await api('POST', '/users', { handle: handle, role: role, username: username });
+  api('POST', '/users', { handle: handle, role: role, username: username }, function(err) {
+    if (err) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = err; return; }
     document.getElementById('add-handle').value = '';
     document.getElementById('add-username').value = '';
     msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'User added';
     loadTab('users');
-  } catch (e) {
-    msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
-  }
+  });
 }
 
-async function updateUsername(id, username) {
+function updateUsername(id, username) {
   var msg = document.getElementById('users-msg');
-  try {
-    await api('PUT', '/users/' + id + '/username', { username: username });
+  api('PUT', '/users/' + id + '/username', { username: username }, function(err) {
+    if (err) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = err; loadTab('users'); return; }
     msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Username updated';
     setTimeout(function() { msg.className = ''; msg.textContent = ''; }, 1500);
-  } catch (e) {
-    msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
-    loadTab('users');
-  }
+  });
 }
 
-async function updateRole(id, role) {
-  try {
-    await api('PUT', '/users/' + id + '/role', { role: role });
-  } catch (e) {
-    alert(e.message);
-    loadTab('users');
-  }
+function updateRole(id, role) {
+  api('PUT', '/users/' + id + '/role', { role: role }, function(err) {
+    if (err) { alert(err); loadTab('users'); }
+  });
 }
 
-async function deleteUser(id) {
+function deleteUser(id) {
   if (!confirm('Delete this user?')) return;
-  try {
-    await api('DELETE', '/users/' + id);
+  api('DELETE', '/users/' + id, null, function(err) {
+    if (err) { alert(err); return; }
     loadTab('users');
-  } catch (e) { alert(e.message); }
+  });
 }
 
 function renderServices(el) {
@@ -265,7 +280,7 @@ function renderServices(el) {
   el.innerHTML = html;
 }
 
-async function addService() {
+function addService() {
   var name = document.getElementById('svc-name').value.trim();
   var slug = document.getElementById('svc-slug').value.trim();
   var url = document.getElementById('svc-url').value.trim();
@@ -273,8 +288,8 @@ async function addService() {
   var adminRole = document.getElementById('svc-admin-role').value.trim() || 'admin';
   var msg = document.getElementById('services-msg');
   if (!name || !slug || !url) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = 'Name, slug, and URL required'; return; }
-  try {
-    await api('POST', '/services', { name: name, slug: slug, url: url, description: desc, icon_url: '', admin_role: adminRole });
+  api('POST', '/services', { name: name, slug: slug, url: url, description: desc, icon_url: '', admin_role: adminRole }, function(err) {
+    if (err) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = err; return; }
     document.getElementById('svc-name').value = '';
     document.getElementById('svc-slug').value = '';
     document.getElementById('svc-url').value = '';
@@ -282,34 +297,30 @@ async function addService() {
     document.getElementById('svc-admin-role').value = '';
     msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Service added';
     loadTab('services');
-  } catch (e) {
-    msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
-  }
+  });
 }
 
-async function updateServiceAdminRole(id, adminRole) {
+function updateServiceAdminRole(id, adminRole) {
   var svc = null;
   for (var i = 0; i < adminData.services.length; i++) {
     if (adminData.services[i].id === id) { svc = adminData.services[i]; break; }
   }
   if (!svc) return;
   var msg = document.getElementById('services-msg');
-  try {
-    await api('PUT', '/services/' + id, { name: svc.name, description: svc.description, url: svc.url, icon_url: svc.icon_url, admin_role: adminRole });
+  api('PUT', '/services/' + id, { name: svc.name, description: svc.description, url: svc.url, icon_url: svc.icon_url, admin_role: adminRole }, function(err) {
+    if (err) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = err; return; }
     svc.admin_role = adminRole;
     msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Admin role updated';
     setTimeout(function() { msg.className = ''; msg.textContent = ''; }, 1500);
-  } catch (e) {
-    msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
-  }
+  });
 }
 
-async function deleteService(id) {
+function deleteService(id) {
   if (!confirm('Delete this service? Grants will also be removed.')) return;
-  try {
-    await api('DELETE', '/services/' + id);
+  api('DELETE', '/services/' + id, null, function(err) {
+    if (err) { alert(err); return; }
     loadTab('services');
-  } catch (e) { alert(e.message); }
+  });
 }
 
 function renderAccess(el) {
@@ -350,40 +361,44 @@ function renderAccess(el) {
   el.innerHTML = html;
 }
 
-async function toggleGrant(userId, serviceId, checked) {
+function toggleGrant(userId, serviceId, checked) {
   var msg = document.getElementById('access-msg');
-  try {
-    if (checked) {
-      await api('POST', '/grants', { user_id: userId, service_id: serviceId, role: 'user' });
-    } else {
-      var grant = null;
-      for (var i = 0; i < adminData.grants.length; i++) {
-        var g = adminData.grants[i];
-        if (g.user_id === userId && g.service_id === serviceId) { grant = g; break; }
-      }
-      if (grant) {
-        await api('DELETE', '/grants/' + grant.id);
-      }
+  if (checked) {
+    api('POST', '/grants', { user_id: userId, service_id: serviceId, role: 'user' }, function(err) {
+      if (err) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = err; loadTab('access'); return; }
+      api('GET', '/grants', null, function(err2, grants) {
+        if (!err2) adminData.grants = grants;
+        renderAccess(document.getElementById('admin-content'));
+      });
+    });
+  } else {
+    var grant = null;
+    for (var i = 0; i < adminData.grants.length; i++) {
+      var g = adminData.grants[i];
+      if (g.user_id === userId && g.service_id === serviceId) { grant = g; break; }
     }
-    adminData.grants = await api('GET', '/grants');
-    renderAccess(document.getElementById('admin-content'));
-    msg.className = ''; msg.textContent = '';
-  } catch (e) {
-    msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
-    loadTab('access');
+    if (grant) {
+      api('DELETE', '/grants/' + grant.id, null, function(err) {
+        if (err) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = err; loadTab('access'); return; }
+        api('GET', '/grants', null, function(err2, grants) {
+          if (!err2) adminData.grants = grants;
+          renderAccess(document.getElementById('admin-content'));
+        });
+      });
+    }
   }
 }
 
-async function updateGrantRole(userId, serviceId, role) {
+function updateGrantRole(userId, serviceId, role) {
   var msg = document.getElementById('access-msg');
-  try {
-    await api('POST', '/grants', { user_id: userId, service_id: serviceId, role: role });
-    adminData.grants = await api('GET', '/grants');
-    msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Role updated';
-    setTimeout(function() { msg.className = ''; msg.textContent = ''; }, 1500);
-  } catch (e) {
-    msg.className = 'admin-msg admin-msg-err'; msg.textContent = e.message;
-  }
+  api('POST', '/grants', { user_id: userId, service_id: serviceId, role: role }, function(err) {
+    if (err) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = err; return; }
+    api('GET', '/grants', null, function(err2, grants) {
+      if (!err2) adminData.grants = grants;
+      msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Role updated';
+      setTimeout(function() { msg.className = ''; msg.textContent = ''; }, 1500);
+    });
+  });
 }
 
 ` + autoLoad + `
