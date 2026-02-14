@@ -388,8 +388,10 @@ function closeDetail() {
   var existing = document.querySelector('.detail-panel');
   if (existing) {
     existing.classList.remove('open');
+    var card = existing.parentNode;
     var el = existing;
     setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+    if (card) { var tl = card.querySelector('.traffic-light'); if (tl) tl.style.display = 'flex'; }
   }
   activeDetailSvcId = 0;
 }
@@ -459,6 +461,8 @@ function buildDetail(card, svcId) {
   inner.appendChild(yellowBtn);
   inner.appendChild(greenBtn);
   panel.appendChild(inner);
+  var tl = card.querySelector('.traffic-light');
+  if (tl) tl.style.display = 'none';
   card.appendChild(panel);
   setTimeout(function() { panel.classList.add('open'); }, 10);
 }
