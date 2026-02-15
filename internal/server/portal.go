@@ -25,7 +25,7 @@ func (s *Server) handlePortal(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
-	user, err := s.db.GetUserByDID(ctx, sess.DID)
+	user, err := s.db.GetUserByIdentityDID(ctx, sess.DID)
 	if err != nil {
 		slog.Warn("portal: user lookup failed", "did", sess.DID, "error", err)
 		return c.Redirect(http.StatusFound, s.cfg.PublicURL+"/login")
@@ -551,7 +551,7 @@ func (s *Server) handleHealthStatus(c echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	user, err := s.db.GetUserByDID(ctx, sess.DID)
+	user, err := s.db.GetUserByIdentityDID(ctx, sess.DID)
 	if err != nil {
 		return c.NoContent(http.StatusUnauthorized)
 	}

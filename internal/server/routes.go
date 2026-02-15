@@ -34,4 +34,7 @@ func (s *Server) registerRoutes() {
 	admin.GET("/grants", s.handleListGrants)
 	admin.POST("/grants", s.handleCreateGrant)
 	admin.DELETE("/grants/:id", s.handleDeleteGrant)
+	admin.GET("/users/:id/identities", s.handleListUserIdentities)
+	admin.POST("/users/:id/identities", s.handleAddIdentity)
+	admin.DELETE("/users/:id/identities/:identityId", s.handleRemoveIdentity)
 }

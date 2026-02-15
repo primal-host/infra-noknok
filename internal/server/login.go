@@ -74,13 +74,9 @@ func (s *Server) handleOAuthCallback(c echo.Context) error {
 		return c.Redirect(http.StatusFound, s.cfg.PublicURL+"/login?error="+url.QueryEscape("Authentication failed. Please try again."))
 	}
 
-	// Check if user exists in the users table.
-	exists, err := s.db.UserExists(c.Request().Context(), did)
+	// Look up user by identity DID.
+	user, err := s.db.GetUserByIdentityDID(c.Request().Context(), did)
 	if err != nil {
-		slog.Error("user lookup failed", "did", did, "error", err)
-		return c.Redirect(http.StatusFound, s.cfg.PublicURL+"/login?error="+url.QueryEscape("Internal error. Please try again."))
-	}
-	if !exists {
 		slog.Warn("unauthorized DID attempted login", "did", did, "handle", resolvedHandle)
 		return c.Redirect(http.StatusFound, s.cfg.PublicURL+"/login?error="+url.QueryEscape("Access denied. You are not authorized."))
 	}
@@ -113,7 +109,7 @@ func (s *Server) handleOAuthCallback(c echo.Context) error {
 	}
 
 	// Create noknok session.
-	cookie, err := s.sess.Create(c.Request().Context(), did, resolvedHandle, groupID)
+	cookie, err := s.sess.Create(c.Request().Context(), user.ID, did, resolvedHandle, groupID)
 	if err != nil {
 		slog.Error("failed to create session", "error", err)
 		return c.Redirect(http.StatusFound, s.cfg.PublicURL+"/login?error="+url.QueryEscape("Internal error. Please try again."))

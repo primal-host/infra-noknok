@@ -6,6 +6,7 @@ import (
 )
 
 // User represents a row in the users table.
+// DID and Handle are populated from the primary identity via JOINs.
 type User struct {
 	ID        int64     `json:"id"`
 	DID       string    `json:"did"`
@@ -14,6 +15,16 @@ type User struct {
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Identity represents a row in the user_identities table.
+type Identity struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	DID       string    `json:"did"`
+	Handle    string    `json:"handle"`
+	IsPrimary bool      `json:"is_primary"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Service represents a row in the services table.
@@ -46,8 +57,11 @@ type Grant struct {
 
 func (db *DB) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := db.Pool.Query(ctx, `
-		SELECT id, did, handle, username, role, created_at, updated_at
-		FROM users ORDER BY id`)
+		SELECT u.id, COALESCE(pi.did, ''), COALESCE(pi.handle, ''),
+		       u.username, u.role, u.created_at, u.updated_at
+		FROM users u
+		LEFT JOIN user_identities pi ON pi.user_id = u.id AND pi.is_primary = true
+		ORDER BY u.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -64,11 +78,14 @@ func (db *DB) ListUsers(ctx context.Context) ([]User, error) {
 	return users, rows.Err()
 }
 
-func (db *DB) GetUserByDID(ctx context.Context, did string) (*User, error) {
+// GetUserByIdentityDID finds a user by any of their linked DIDs.
+func (db *DB) GetUserByIdentityDID(ctx context.Context, did string) (*User, error) {
 	var u User
 	err := db.Pool.QueryRow(ctx, `
-		SELECT id, did, handle, username, role, created_at, updated_at
-		FROM users WHERE did = $1`, did).
+		SELECT u.id, ui.did, ui.handle, u.username, u.role, u.created_at, u.updated_at
+		FROM users u
+		JOIN user_identities ui ON ui.user_id = u.id
+		WHERE ui.did = $1`, did).
 		Scan(&u.ID, &u.DID, &u.Handle, &u.Username, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -76,20 +93,14 @@ func (db *DB) GetUserByDID(ctx context.Context, did string) (*User, error) {
 	return &u, nil
 }
 
-func (db *DB) GetUserRole(ctx context.Context, did string) (string, error) {
-	var role string
-	err := db.Pool.QueryRow(ctx, `SELECT role FROM users WHERE did = $1`, did).Scan(&role)
-	return role, err
-}
-
-func (db *DB) CreateUser(ctx context.Context, did, handle, role, username string) (*User, error) {
+func (db *DB) CreateUser(ctx context.Context, role, username string) (*User, error) {
 	var u User
 	err := db.Pool.QueryRow(ctx, `
-		INSERT INTO users (did, handle, role, username)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, did, handle, username, role, created_at, updated_at`,
-		did, handle, role, username).
-		Scan(&u.ID, &u.DID, &u.Handle, &u.Username, &u.Role, &u.CreatedAt, &u.UpdatedAt)
+		INSERT INTO users (role, username)
+		VALUES ($1, $2)
+		RETURNING id, username, role, created_at, updated_at`,
+		role, username).
+		Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -108,11 +119,10 @@ func (db *DB) UpdateUserUsername(ctx context.Context, id int64, username string)
 	if err != nil {
 		return err
 	}
-	// Propagate to active sessions.
+	// Propagate to active sessions via user_id.
 	_, err = db.Pool.Exec(ctx, `
 		UPDATE sessions SET username = $1
-		WHERE did = (SELECT did FROM users WHERE id = $2)
-		  AND expires_at > now()`, username, id)
+		WHERE user_id = $2 AND expires_at > now()`, username, id)
 	return err
 }
 
@@ -123,8 +133,51 @@ func (db *DB) DeleteUser(ctx context.Context, id int64) error {
 
 func (db *DB) UserExists(ctx context.Context, did string) (bool, error) {
 	var exists bool
-	err := db.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE did = $1)`, did).Scan(&exists)
+	err := db.Pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM user_identities WHERE did = $1)`, did).Scan(&exists)
 	return exists, err
+}
+
+// --- Identities ---
+
+func (db *DB) AddIdentity(ctx context.Context, userID int64, did, handle string, isPrimary bool) (*Identity, error) {
+	var id Identity
+	err := db.Pool.QueryRow(ctx, `
+		INSERT INTO user_identities (user_id, did, handle, is_primary)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, user_id, did, handle, is_primary, created_at`,
+		userID, did, handle, isPrimary).
+		Scan(&id.ID, &id.UserID, &id.DID, &id.Handle, &id.IsPrimary, &id.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+func (db *DB) ListIdentities(ctx context.Context, userID int64) ([]Identity, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT id, user_id, did, handle, is_primary, created_at
+		FROM user_identities WHERE user_id = $1
+		ORDER BY is_primary DESC, created_at`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []Identity
+	for rows.Next() {
+		var id Identity
+		if err := rows.Scan(&id.ID, &id.UserID, &id.DID, &id.Handle, &id.IsPrimary, &id.CreatedAt); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (db *DB) RemoveIdentity(ctx context.Context, identityID int64) error {
+	_, err := db.Pool.Exec(ctx, `DELETE FROM user_identities WHERE id = $1`, identityID)
+	return err
 }
 
 // --- Services ---
@@ -245,11 +298,11 @@ func (db *DB) DeleteService(ctx context.Context, id int64) error {
 func (db *DB) ListGrants(ctx context.Context) ([]Grant, error) {
 	rows, err := db.Pool.Query(ctx, `
 		SELECT g.id, g.user_id, g.service_id, g.role, g.granted_by, g.created_at,
-		       u.handle, s.name
+		       COALESCE(pi.handle, ''), s.name
 		FROM grants g
-		JOIN users u ON u.id = g.user_id
+		LEFT JOIN user_identities pi ON pi.user_id = g.user_id AND pi.is_primary = true
 		JOIN services s ON s.id = g.service_id
-		ORDER BY u.handle, s.name`)
+		ORDER BY pi.handle, s.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -314,16 +367,16 @@ func (db *DB) GetServiceByHost(ctx context.Context, host string) (*Service, erro
 // contains the given host. For owner/admin users, returns the service's
 // admin_role. For regular users, returns the grant's role.
 func (db *DB) GetUserServiceRole(ctx context.Context, did, host string) (string, error) {
-	// Match service by checking if the url contains the host.
 	var userRole, grantRole, adminRole string
 	err := db.Pool.QueryRow(ctx, `
 		SELECT u.role,
 		       COALESCE(g.role, ''),
 		       COALESCE(s.admin_role, 'admin')
-		FROM users u
+		FROM user_identities ui
+		JOIN users u ON u.id = ui.user_id
 		LEFT JOIN services s ON s.url LIKE '%' || $2 || '%'
 		LEFT JOIN grants g ON g.user_id = u.id AND g.service_id = s.id
-		WHERE u.did = $1
+		WHERE ui.did = $1
 		LIMIT 1`, did, host).Scan(&userRole, &grantRole, &adminRole)
 	if err != nil {
 		return "", err

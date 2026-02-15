@@ -22,6 +22,7 @@ type Session struct {
 	Handle    string
 	Username  string
 	GroupID   string
+	UserID    int64
 	ExpiresAt time.Time
 }
 
@@ -47,7 +48,7 @@ func NewManager(pool *pgxpool.Pool, ttl time.Duration, cookieDomain string, secu
 
 // Create inserts a new session and returns a cookie to set on the response.
 // If groupID is empty, a new group is created.
-func (m *Manager) Create(ctx context.Context, did, handle, groupID string) (*http.Cookie, error) {
+func (m *Manager) Create(ctx context.Context, userID int64, did, handle, groupID string) (*http.Cookie, error) {
 	token, err := generateToken()
 	if err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
@@ -62,23 +63,23 @@ func (m *Manager) Create(ctx context.Context, did, handle, groupID string) (*htt
 
 	// Look up username from users table.
 	var username string
-	_ = m.pool.QueryRow(ctx, `SELECT username FROM users WHERE did = $1`, did).Scan(&username)
+	_ = m.pool.QueryRow(ctx, `SELECT username FROM users WHERE id = $1`, userID).Scan(&username)
 
 	expiresAt := time.Now().Add(m.ttl)
 	_, err = m.pool.Exec(ctx, `
-		INSERT INTO sessions (token, did, handle, username, group_id, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`, token, did, handle, username, groupID, expiresAt)
+		INSERT INTO sessions (token, did, handle, username, group_id, user_id, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, token, did, handle, username, groupID, userID, expiresAt)
 	if err != nil {
 		return nil, fmt.Errorf("insert session: %w", err)
 	}
 
-	// Update the user's handle if it changed.
+	// Update the identity's handle if it changed.
 	_, err = m.pool.Exec(ctx, `
-		UPDATE users SET handle = $2, updated_at = now() WHERE did = $1
+		UPDATE user_identities SET handle = $2 WHERE did = $1
 	`, did, handle)
 	if err != nil {
-		slog.Warn("failed to update user handle", "did", did, "error", err)
+		slog.Warn("failed to update identity handle", "did", did, "error", err)
 	}
 
 	return m.makeCookie(token, expiresAt), nil
@@ -88,9 +89,9 @@ func (m *Manager) Create(ctx context.Context, did, handle, groupID string) (*htt
 func (m *Manager) Validate(ctx context.Context, token string) (*Session, error) {
 	var s Session
 	err := m.pool.QueryRow(ctx, `
-		SELECT id, token, did, handle, username, COALESCE(group_id, ''), expires_at FROM sessions
+		SELECT id, token, did, handle, username, COALESCE(group_id, ''), user_id, expires_at FROM sessions
 		WHERE token = $1 AND expires_at > now()
-	`, token).Scan(&s.ID, &s.Token, &s.DID, &s.Handle, &s.Username, &s.GroupID, &s.ExpiresAt)
+	`, token).Scan(&s.ID, &s.Token, &s.DID, &s.Handle, &s.Username, &s.GroupID, &s.UserID, &s.ExpiresAt)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +112,7 @@ func (m *Manager) ListGroup(ctx context.Context, groupID string) ([]Session, err
 		return nil, nil
 	}
 	rows, err := m.pool.Query(ctx, `
-		SELECT id, token, did, handle, username, group_id, expires_at FROM sessions
+		SELECT id, token, did, handle, username, group_id, user_id, expires_at FROM sessions
 		WHERE group_id = $1 AND expires_at > now()
 		ORDER BY created_at
 	`, groupID)
@@ -123,7 +124,7 @@ func (m *Manager) ListGroup(ctx context.Context, groupID string) ([]Session, err
 	var sessions []Session
 	for rows.Next() {
 		var s Session
-		if err := rows.Scan(&s.ID, &s.Token, &s.DID, &s.Handle, &s.Username, &s.GroupID, &s.ExpiresAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.Token, &s.DID, &s.Handle, &s.Username, &s.GroupID, &s.UserID, &s.ExpiresAt); err != nil {
 			return nil, err
 		}
 		sessions = append(sessions, s)

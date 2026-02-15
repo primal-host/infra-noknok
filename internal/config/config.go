@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const Version = "0.4.0"
+const Version = "0.5.0"
 
 // Config holds all runtime configuration loaded from environment variables.
 type Config struct {

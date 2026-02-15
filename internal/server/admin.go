@@ -203,7 +203,7 @@ function renderUsers(el) {
     var ob = roleOrder[b.role] !== undefined ? roleOrder[b.role] : 3;
     return oa - ob;
   });
-  var html = '<table class="admin-tbl"><thead><tr><th style="width:30px"></th><th>Handle</th><th>Username</th><th>Role</th><th>DID</th></tr></thead><tbody>';
+  var html = '<table class="admin-tbl"><thead><tr><th style="width:30px"></th><th>Handle</th><th>Username</th><th>Role</th></tr></thead><tbody>';
   for (var i = 0; i < adminData.users.length; i++) {
     var u = adminData.users[i];
     var canChangeRole = ROLE === 'owner';
@@ -215,7 +215,7 @@ function renderUsers(el) {
         '<option value="admin"' + (u.role==='admin'?' selected':'') + '>Admin</option>' +
         '<option value="owner"' + (u.role==='owner'?' selected':'') + '>Owner</option></select>'
       : esc(u.role);
-    html += '<tr><td>' + radio + '</td><td>' + esc(u.handle || '(no handle)') + '</td><td>' + usernameCell + '</td><td>' + roleCell + '</td><td style="font-size:0.75rem;color:#64748b;max-width:200px;overflow:hidden;text-overflow:ellipsis">' + esc(u.did) + '</td></tr>';
+    html += '<tr><td>' + radio + '</td><td>' + esc(u.handle || '(no handle)') + '</td><td>' + usernameCell + '</td><td>' + roleCell + '</td></tr>';
   }
   html += '</tbody></table>';
   html += '<div class="admin-form">' +
@@ -225,6 +225,13 @@ function renderUsers(el) {
     '<button class="admin-btn" id="add-user-btn" onclick="addUser()" disabled style="opacity:0.4;cursor:default">Add</button>' +
     '<button class="admin-btn-danger" id="del-user-btn" onclick="deleteSelectedUser()" disabled style="opacity:0.4;cursor:default;padding:0.375rem 0.75rem;font-size:0.8125rem">Delete</button></div>';
   html += '<div id="users-msg"></div>';
+  html += '<div id="identities-section" style="display:none;margin-top:1rem;border-top:1px solid #334155;padding-top:0.75rem">' +
+    '<div style="font-size:0.8125rem;color:#94a3b8;margin-bottom:0.5rem;font-weight:500">Identities</div>' +
+    '<div id="identities-list"></div>' +
+    '<div class="admin-form" style="margin-top:0.5rem">' +
+    '<input class="admin-input" id="add-identity-handle" placeholder="handle" style="flex:1;min-width:150px">' +
+    '<button class="admin-btn" onclick="addIdentity()">Link</button></div>' +
+    '<div id="identities-msg"></div></div>';
   el.innerHTML = html;
   // Re-select or auto-select first user.
   var targetId = selectedUserId;
@@ -321,6 +328,7 @@ function selectUser(userId) {
     btn.style.opacity = '1';
     btn.style.cursor = 'pointer';
   }
+  loadIdentities(userId);
   if (selectedUserRole === 'owner' || selectedUserRole === 'admin') {
     selectedUserGrants = {};
     fetchAndUpdateDots();
@@ -529,6 +537,54 @@ function toggleCardGrant(svcId, card) {
       });
     });
   }
+}
+
+function loadIdentities(userId) {
+  var section = document.getElementById('identities-section');
+  var list = document.getElementById('identities-list');
+  if (!section || !list) return;
+  section.style.display = 'block';
+  list.innerHTML = '<div style="color:#64748b;font-size:0.75rem">Loading...</div>';
+  api('GET', '/users/' + userId + '/identities', null, function(err, data) {
+    if (err) { list.innerHTML = '<div class="admin-msg admin-msg-err">' + esc(err) + '</div>'; return; }
+    var html = '';
+    for (var i = 0; i < data.length; i++) {
+      var id = data[i];
+      var badge = id.is_primary ? ' <span style="color:#3b82f6;font-size:0.6875rem">(primary)</span>' : '';
+      var rmBtn = id.is_primary ? '' : ' <button class="admin-btn-danger" onclick="removeIdentity(' + userId + ',' + id.id + ')" style="margin-left:0.5rem">Remove</button>';
+      html += '<div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0;font-size:0.8125rem">' +
+        '<span style="color:#e2e8f0">' + esc(id.handle || id.did) + '</span>' + badge +
+        '<span style="color:#64748b;font-size:0.6875rem;overflow:hidden;text-overflow:ellipsis;max-width:200px">' + esc(id.did) + '</span>' +
+        rmBtn + '</div>';
+    }
+    list.innerHTML = html || '<div style="color:#64748b;font-size:0.75rem">No identities</div>';
+  });
+}
+
+function addIdentity() {
+  if (!selectedUserId) return;
+  var handle = document.getElementById('add-identity-handle').value.trim();
+  var msg = document.getElementById('identities-msg');
+  if (!handle) return;
+  api('POST', '/users/' + selectedUserId + '/identities', { handle: handle }, function(err) {
+    if (err) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = err; return; }
+    document.getElementById('add-identity-handle').value = '';
+    msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Identity linked';
+    setTimeout(function() { msg.className = ''; msg.textContent = ''; }, 1500);
+    loadIdentities(selectedUserId);
+  });
+}
+
+function removeIdentity(userId, identityId) {
+  if (!confirm('Remove this identity?')) return;
+  var msg = document.getElementById('identities-msg');
+  api('DELETE', '/users/' + userId + '/identities/' + identityId, null, function(err) {
+    if (err) { msg.className = 'admin-msg admin-msg-err'; msg.textContent = err; return; }
+    msg.className = 'admin-msg admin-msg-ok'; msg.textContent = 'Identity removed';
+    setTimeout(function() { msg.className = ''; msg.textContent = ''; }, 1500);
+    loadIdentities(userId);
+    loadTab('users');
+  });
 }
 
 function deleteSelectedUser() {

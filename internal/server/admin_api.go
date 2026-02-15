@@ -29,7 +29,7 @@ func (s *Server) requireAdmin(next echo.HandlerFunc) echo.HandlerFunc {
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid session"})
 		}
-		user, err := s.db.GetUserByDID(c.Request().Context(), sess.DID)
+		user, err := s.db.GetUserByIdentityDID(c.Request().Context(), sess.DID)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "user not found"})
 		}
@@ -95,11 +95,25 @@ func (s *Server) handleCreateUser(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid username (alphanumeric, hyphens, underscores, 1-39 chars)"})
 	}
 
-	user, err := s.db.CreateUser(c.Request().Context(), did, resolvedHandle, req.Role, req.Username)
+	// Check if DID already has an identity.
+	if exists, _ := s.db.UserExists(c.Request().Context(), did); exists {
+		return c.JSON(http.StatusConflict, map[string]string{"error": "identity already exists"})
+	}
+
+	user, err := s.db.CreateUser(c.Request().Context(), req.Role, req.Username)
 	if err != nil {
-		slog.Warn("create user failed", "did", did, "error", err)
+		slog.Warn("create user failed", "error", err)
 		return c.JSON(http.StatusConflict, map[string]string{"error": "user already exists"})
 	}
+
+	if _, err := s.db.AddIdentity(c.Request().Context(), user.ID, did, resolvedHandle, true); err != nil {
+		slog.Warn("add identity failed", "did", did, "error", err)
+		// Clean up the user we just created.
+		_ = s.db.DeleteUser(c.Request().Context(), user.ID)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to add identity"})
+	}
+	user.DID = did
+	user.Handle = resolvedHandle
 
 	slog.Info("user created", "did", did, "handle", resolvedHandle, "role", req.Role, "by", caller.Handle)
 	return c.JSON(http.StatusCreated, user)
@@ -434,5 +448,105 @@ func (s *Server) handleDeleteGrant(c echo.Context) error {
 	}
 
 	slog.Info("grant deleted", "grant_id", id, "by", caller.Handle)
+	return c.NoContent(http.StatusNoContent)
+}
+
+// --- Identities ---
+
+func (s *Server) handleListUserIdentities(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user ID"})
+	}
+
+	ids, err := s.db.ListIdentities(c.Request().Context(), id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list identities"})
+	}
+	if ids == nil {
+		ids = []database.Identity{}
+	}
+	return c.JSON(http.StatusOK, ids)
+}
+
+func (s *Server) handleAddIdentity(c echo.Context) error {
+	caller := adminUser(c)
+
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user ID"})
+	}
+
+	var req struct {
+		Handle string `json:"handle"`
+	}
+	if err := c.Bind(&req); err != nil || req.Handle == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "handle is required"})
+	}
+
+	// Resolve handle to DID.
+	did, resolvedHandle, err := s.oauth.ResolveHandle(c.Request().Context(), req.Handle)
+	if err != nil {
+		slog.Warn("handle resolution failed", "handle", req.Handle, "error", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "could not resolve handle"})
+	}
+
+	// Check if DID already has an identity.
+	if exists, _ := s.db.UserExists(c.Request().Context(), did); exists {
+		return c.JSON(http.StatusConflict, map[string]string{"error": "identity already linked to a user"})
+	}
+
+	identity, err := s.db.AddIdentity(c.Request().Context(), userID, did, resolvedHandle, false)
+	if err != nil {
+		slog.Warn("add identity failed", "did", did, "error", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to add identity"})
+	}
+
+	slog.Info("identity added", "user_id", userID, "did", did, "handle", resolvedHandle, "by", caller.Handle)
+	return c.JSON(http.StatusCreated, identity)
+}
+
+func (s *Server) handleRemoveIdentity(c echo.Context) error {
+	caller := adminUser(c)
+
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user ID"})
+	}
+
+	identityID, err := strconv.ParseInt(c.Param("identityId"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid identity ID"})
+	}
+
+	// Verify the identity belongs to this user and isn't the last/primary one.
+	ids, err := s.db.ListIdentities(c.Request().Context(), userID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
+	}
+
+	var found bool
+	for _, id := range ids {
+		if id.ID == identityID {
+			found = true
+			if id.IsPrimary {
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "cannot remove primary identity"})
+			}
+			break
+		}
+	}
+	if !found {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "identity not found for this user"})
+	}
+
+	if len(ids) <= 1 {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "cannot remove last identity"})
+	}
+
+	if err := s.db.RemoveIdentity(c.Request().Context(), identityID); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to remove identity"})
+	}
+
+	slog.Info("identity removed", "user_id", userID, "identity_id", identityID, "by", caller.Handle)
 	return c.NoContent(http.StatusNoContent)
 }

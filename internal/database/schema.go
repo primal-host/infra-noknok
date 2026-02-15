@@ -15,11 +15,10 @@ CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions (token);
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '';
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS group_id TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_sessions_group_id ON sessions (group_id) WHERE group_id != '';
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id BIGINT NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS users (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    did        TEXT NOT NULL UNIQUE,
-    handle     TEXT NOT NULL,
     role       TEXT NOT NULL DEFAULT 'user',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     username   TEXT NOT NULL DEFAULT '',
@@ -27,6 +26,16 @@ CREATE TABLE IF NOT EXISTS users (
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_nonempty ON users (username) WHERE username != '';
+
+CREATE TABLE IF NOT EXISTS user_identities (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    did        TEXT NOT NULL UNIQUE,
+    handle     TEXT NOT NULL DEFAULT '',
+    is_primary BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_user_identities_user_id ON user_identities (user_id);
 
 CREATE TABLE IF NOT EXISTS services (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
