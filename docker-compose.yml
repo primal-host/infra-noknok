@@ -34,12 +34,27 @@ services:
       # Local (HTTP)
       - "traefik.http.routers.noknok-local.rule=Host(`noknok.localhost`)"
       - "traefik.http.routers.noknok-local.entrypoints=http"
+      # Catch-all: redirect unknown domains to nokNok login
+      - "traefik.http.routers.noknok-catchall.rule=HostRegexp(`.+`)"
+      - "traefik.http.routers.noknok-catchall.entrypoints=http"
+      - "traefik.http.routers.noknok-catchall.priority=1"
+      - "traefik.http.routers.noknok-catchall.middlewares=redirect-to-primal"
+      - "traefik.http.routers.noknok-catchall-https.rule=HostRegexp(`.+`)"
+      - "traefik.http.routers.noknok-catchall-https.entrypoints=https"
+      - "traefik.http.routers.noknok-catchall-https.priority=1"
+      - "traefik.http.routers.noknok-catchall-https.tls=true"
+      - "traefik.http.routers.noknok-catchall-https.middlewares=redirect-to-primal"
+      - "traefik.http.middlewares.redirect-to-primal.redirectregex.regex=.*"
+      - "traefik.http.middlewares.redirect-to-primal.redirectregex.replacement=https://primal.host/"
+      - "traefik.http.middlewares.redirect-to-primal.redirectregex.permanent=false"
       # Service
       - "traefik.http.services.noknok.loadbalancer.server.port=4321"
       # ForwardAuth middleware (referenced by other services as "noknok-auth")
       - "traefik.http.middlewares.noknok-auth.forwardauth.address=http://primal-noknok:4321/auth"
       - "traefik.http.middlewares.noknok-auth.forwardauth.trustForwardHeader=true"
       - "traefik.http.middlewares.noknok-auth.forwardauth.authResponseHeaders=X-User-DID,X-User-Handle,X-User-Role,X-WEBAUTH-USER"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     dns:
       - 192.168.147.53
 
